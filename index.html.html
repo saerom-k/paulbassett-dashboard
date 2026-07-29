@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>폴 바셋 매장 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #FAFAFA;
+    --surface-3: #F2F2F3;
+    --border: #E7E7E9;
+    --border-soft: #F0F0F1;
+    --text: #17171A;
+    --text-dim: #58585F;
+    --text-mute: #9A9AA0;
+    --accent: #E4002B;
+    --accent-bright: #FF2340;
+    --accent-soft: #FFE9EC;
+    --accent-ink: #ffffff;
+    --positive: #0E9F5A;
+    --negative: #E4002B;
+    --shadow: 0 1px 2px rgba(20,20,25,.04), 0 6px 20px rgba(20,20,25,.05);
+    --divider: repeating-linear-gradient(90deg, var(--border) 0, var(--border) 6px, transparent 6px, transparent 12px);
+    font-size: 16px;
+  }
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height:100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection{ background: var(--accent); color: #fff; }
+  ::-webkit-scrollbar{ width:10px; height:10px; }
+  ::-webkit-scrollbar-track{ background: var(--surface-2); }
+  ::-webkit-scrollbar-thumb{ background: var(--border); border-radius:6px; }
+
+  .display{ font-family:'Noto Sans KR', sans-serif; font-weight:800; }
+  .mono{ font-family:'JetBrains Mono', monospace; }
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size:.7rem; letter-spacing:.16em; text-transform:uppercase;
+    color: var(--accent); font-weight:700;
+  }
+  a{ color: var(--accent); }
+
+  /* ---------- Upload screen ---------- */
+  #uploadScreen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    padding: 48px 20px;
+  }
+  .upload-shell{ width:100%; max-width: 940px; }
+  .brand-row{ display:flex; align-items:center; gap:14px; margin-bottom:8px; }
+  .brand-logo{ height:40px; width:auto; flex-shrink:0; display:block; }
+  .topbar-logo{ height:44px; width:auto; flex-shrink:0; }
+  .brand-mark{ width:14px; height:34px; border-radius:3px; background: var(--accent); flex-shrink:0; }
+  h1.title{
+    font-family:'Noto Sans KR',sans-serif; font-size: clamp(2rem, 4vw, 2.7rem); font-weight:800; margin:0;
+    letter-spacing:-.02em; color: var(--text);
+  }
+  .subtitle{ color: var(--text-dim); font-size:1rem; margin:10px 0 36px; max-width:660px; line-height:1.65; }
+
+  .upload-grid{
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap:12px; margin-bottom: 20px;
+  }
+  .drop{
+    position:relative; border:1.5px dashed var(--border); background: var(--surface-2);
+    border-radius:12px; padding:16px 16px 14px; cursor:pointer; transition: border-color .15s, background .15s, transform .1s;
+  }
+  .drop:hover{ border-color: var(--accent); background: var(--accent-soft); }
+  .drop.dragover{ border-color: var(--accent); background: var(--accent-soft); transform: scale(1.01); }
+  .drop.filled{ border-style: solid; border-color: var(--positive); background: #F1FBF5; }
+  .drop.required::before{
+    content:"필수"; position:absolute; top:12px; right:14px; font-size:.62rem;
+    letter-spacing:.08em; color: var(--accent); font-family:'JetBrains Mono',monospace; font-weight:700;
+  }
+  .drop.optional::before{
+    content:"선택"; position:absolute; top:12px; right:14px; font-size:.62rem;
+    letter-spacing:.08em; color: var(--text-mute); font-family:'JetBrains Mono',monospace;
+  }
+  .drop .idx{ font-family:'JetBrains Mono', monospace; font-size:.72rem; color: var(--accent); letter-spacing:.06em; font-weight:700; }
+  .drop .name{ font-weight:700; font-size:.98rem; margin:5px 0 4px; color: var(--text); padding-right:34px; }
+  .drop .desc{ font-size:.78rem; color: var(--text-mute); line-height:1.45; }
+  .drop .status{ margin-top:10px; font-size:.78rem; color: var(--positive); font-family:'JetBrains Mono',monospace; word-break:break-all; font-weight:600; }
+  .drop input[type=file]{ display:none; }
+
+  .store-box{
+    display:none; border:1.5px solid var(--border); border-radius:12px; padding:16px 18px; margin-bottom:20px;
+    background: var(--surface-2); align-items:center; gap:16px; flex-wrap:wrap;
+  }
+  .store-box.show{ display:flex; }
+  .store-box label{ font-size:.82rem; color: var(--text-dim); font-weight:600; }
+  .store-box select{
+    flex:1; min-width:220px; background:#fff; border:1.5px solid var(--border); color: var(--text);
+    padding:9px 12px; border-radius:8px; font-family:'Noto Sans KR'; font-size:.92rem; font-weight:600;
+  }
+  .store-box select:focus{ outline:none; border-color: var(--accent); }
+  .store-tag{ font-size:.74rem; font-family:'JetBrains Mono',monospace; padding:4px 10px; border-radius:20px; font-weight:700; }
+  .store-tag.auto{ background: #E9F9EF; color: var(--positive); }
+  .store-tag.manual{ background: var(--surface-3); color: var(--text-mute); }
+
+  .adv-toggle{
+    display:inline-flex; align-items:center; gap:8px; background:none; border:none;
+    color: var(--text-dim); font-size:.85rem; cursor:pointer; padding:6px 0; font-family:'Noto Sans KR'; font-weight:600;
+  }
+  .adv-toggle:hover{ color: var(--accent); }
+  .adv-panel{ display:none; margin-top:14px; border:1.5px solid var(--border); border-radius:12px; padding:18px; background: var(--surface-2); }
+  .adv-panel.open{ display:block; }
+  .adv-field{ margin-bottom:14px; }
+  .adv-field label{ display:block; font-size:.78rem; color: var(--text-dim); margin-bottom:6px; font-weight:600; }
+  .adv-field input[type=text]{
+    width:100%; background: #fff; border:1.5px solid var(--border); color: var(--text);
+    padding:9px 10px; border-radius:8px; font-family:'Noto Sans KR'; font-size:.9rem;
+  }
+  .adv-field textarea{
+    width:100%; background: #fff; border:1.5px solid var(--border); color: var(--text-dim);
+    padding:10px; border-radius:8px; font-family:'JetBrains Mono',monospace; font-size:.76rem; line-height:1.5;
+    min-height:110px; resize:vertical;
+  }
+
+  .run-row{ display:flex; align-items:center; gap:16px; margin-top:28px; flex-wrap:wrap; }
+  .btn{
+    background: var(--accent); color: #fff; border:none; padding:13px 26px;
+    border-radius:9px; font-weight:700; font-size:.92rem; cursor:pointer; letter-spacing:.01em;
+    transition: transform .12s, background .12s, box-shadow .12s; box-shadow: var(--shadow);
+  }
+  .btn:hover:not(:disabled){ background: var(--accent-bright); transform: translateY(-1px); }
+  .btn:disabled{ background: var(--surface-3); color: var(--text-mute); cursor:not-allowed; box-shadow:none; }
+  .btn.ghost{ background:#fff; border:1.5px solid var(--border); color: var(--text-dim); box-shadow:none; }
+  .btn.ghost:hover{ border-color: var(--accent); color: var(--accent); background:#fff; }
+  #runMsg{ font-size:.82rem; color: var(--accent); font-family:'JetBrains Mono',monospace; }
+  .footer-note{ margin-top:40px; font-size:.78rem; color: var(--text-mute); line-height:1.6; }
+
+  /* ---------- Dashboard screen ---------- */
+  #dashScreen{ display:none; padding: 28px 26px 80px; max-width:1360px; margin:0 auto; }
+  .topbar{
+    display:flex; justify-content:space-between; align-items:flex-end; flex-wrap:wrap; gap:16px;
+    padding-bottom:18px; margin-bottom:22px; border-bottom:2px solid var(--text);
+  }
+  .topbar .store{ font-size:1.7rem; font-weight:800; }
+  .topbar .period{ color: var(--accent); }
+  .topbar .meta{ font-family:'JetBrains Mono',monospace; font-size:.78rem; color: var(--text-mute); margin-top:4px; }
+  .topbar .actions{ display:flex; gap:10px; }
+  .btn.small{ padding:8px 16px; font-size:.8rem; }
+
+  section.block{ margin-bottom:34px; }
+  .block-head{ display:flex; align-items:baseline; gap:10px; margin-bottom:14px; }
+  .block-head .eyebrow{ white-space:nowrap; }
+  .block-head .rule{ flex:1; height:1px; background: var(--divider); }
+  h2.block-title{ font-family:'Noto Sans KR',sans-serif; font-size:1.32rem; font-weight:800; margin:0; }
+
+  .cards{ display:grid; grid-template-columns: repeat(auto-fit, minmax(210px,1fr)); gap:12px; }
+  .card{
+    background: var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px 18px 16px;
+    position:relative; overflow:hidden; box-shadow: var(--shadow);
+  }
+  .card .label{ font-size:.76rem; color: var(--text-mute); letter-spacing:.02em; margin-bottom:8px; font-weight:600; }
+  .card .value{ font-family:'Noto Sans KR',sans-serif; font-size:1.65rem; font-weight:800; color:var(--text); line-height:1.15; }
+  .card .sub{ margin-top:8px; font-size:.8rem; color: var(--text-dim); }
+  .card .sub .pos{ color: var(--positive); font-weight:700; }
+  .card .sub .neg{ color: var(--negative); font-weight:700; }
+
+  .gauge-card{ display:flex; align-items:center; gap:16px; }
+  .gauge{
+    width:64px; height:64px; border-radius:50%; flex-shrink:0; position:relative;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .gauge .hole{
+    position:absolute; inset:7px; border-radius:50%; background: #fff;
+    display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace;
+    font-size:.68rem; font-weight:800; color: var(--text);
+  }
+
+  table.dt{ width:100%; border-collapse:collapse; font-size:.86rem; }
+  table.dt th{
+    text-align:right; font-weight:700; color: var(--text-mute); font-size:.72rem; letter-spacing:.04em;
+    text-transform:uppercase; padding:9px 10px; border-bottom:2px solid var(--text);
+    font-family:'JetBrains Mono',monospace;
+  }
+  table.dt th:first-child, table.dt td:first-child{ text-align:left; }
+  table.dt td{ padding:9px 10px; border-bottom:1px solid var(--border-soft); text-align:right; }
+  table.dt tbody tr:hover{ background: var(--accent-soft); }
+  table.dt tr.mid-row{ cursor:pointer; }
+  table.dt tr.mid-row td:first-child{ font-weight:700; }
+  table.dt tr.mid-row.active{ background: var(--accent-soft); }
+  table.dt tr.mid-row.active td:first-child{ color: var(--accent); }
+  table.dt tr.mid-row.active td:first-child::before{ content:"▾ "; }
+  table.dt tr.mid-row:not(.active) td:first-child::before{ content:"▸ "; color: var(--text-mute); }
+  table.dt tfoot td{ border-top:2px solid var(--accent); border-bottom:none; font-weight:800; color: var(--accent); padding-top:11px; }
+  .tablewrap{ background: var(--surface); border:1px solid var(--border); border-radius:14px; padding:6px 16px; overflow-x:auto; box-shadow: var(--shadow); }
+  .rankbadge{
+    display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
+    border-radius:50%; background: var(--text); color: #fff; font-size:.7rem;
+    font-family:'JetBrains Mono',monospace; font-weight:700;
+  }
+  .bar-cell{ position:relative; }
+  .bar-track{ background: var(--surface-3); border-radius:3px; height:6px; width:100%; overflow:hidden; margin-top:4px; }
+  .bar-fill{ height:100%; background: var(--accent); border-radius:3px; }
+
+  .two-col{ display:grid; grid-template-columns: 1.1fr .9fr; gap:16px; }
+  @media (max-width: 900px){ .two-col{ grid-template-columns:1fr; } }
+
+  .chan-grid, .dow-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px; }
+
+  .note{ font-size:.76rem; color: var(--text-mute); margin-top:10px; line-height:1.5; }
+  .pill{ display:inline-block; padding:2px 8px; border-radius:20px; background: var(--surface-3); font-size:.68rem; color: var(--text-dim); font-family:'JetBrains Mono',monospace; font-weight:600; }
+
+  .empty-hint{ color: var(--text-mute); font-size:.85rem; padding:20px; text-align:center; }
+
+  .chart-legend{ display:flex; gap:18px; font-size:.78rem; color: var(--text-dim); margin-bottom:10px; flex-wrap:wrap; }
+  .chart-legend span{ display:inline-flex; align-items:center; gap:6px; font-weight:600; }
+  .chart-legend i{ width:10px; height:10px; border-radius:2px; display:inline-block; }
+
+  @media (max-width: 640px){
+    #dashScreen{ padding: 20px 14px 60px; }
+    .topbar .store{ font-size:1.3rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ UPLOAD SCREEN ============ -->
+<div id="uploadScreen">
+  <div class="upload-shell">
+    <div class="brand-row">
+      <div class="brand-mark"></div>
+      <span class="eyebrow">PAUL BASSETT · STORE DASHBOARD</span>
+    </div>
+    <h1 class="title">매장 실적 대시보드</h1>
+    <p class="subtitle">spharos에서 내려받은 raw 파일을 그대로 업로드해주세요(드래그해서 놓아도 됩니다).<br>당월 실적·달성률·카테고리별 매출·폐기 현황까지 자동으로 계산해서 보여드립니다.</p>
+
+    <div class="upload-grid">
+      <label class="drop required" id="drop-cur">
+        <div class="idx">1-1</div>
+        <div class="name">일자별종합매출현황 (당월)</div>
+        <div class="desc">일별 매출, 조수, 조단가, 배달 매출의 원천 데이터입니다.</div>
+        <div class="status" data-slot="cur"></div>
+        <input type="file" accept=".xlsx,.xls,.csv" data-slot="cur">
+      </label>
+      <label class="drop optional" id="drop-prev">
+        <div class="idx">1-2</div>
+        <div class="name">일자별종합매출현황 (전년 동월)</div>
+        <div class="desc">작년 같은 달과 매출을 비교하기 위한 데이터입니다.</div>
+        <div class="status" data-slot="prev"></div>
+        <input type="file" accept=".xlsx,.xls,.csv" data-slot="prev">
+      </label>
+      <label class="drop optional" id="drop-prod">
+        <div class="idx">1-3</div>
+        <div class="name">상품별매출내역조회_일자별</div>
+        <div class="desc">카테고리 집계와 상품 판매 TOP 20의 원천 데이터입니다.</div>
+        <div class="status" data-slot="prod"></div>
+        <input type="file" accept=".xlsx,.xls,.csv" data-slot="prod">
+      </label>
+      <label class="drop optional" id="drop-waste">
+        <div class="idx">1-4</div>
+        <div class="name">재고폐기등록</div>
+        <div class="desc">폐기 TOP 20 및 폐기율 계산용. 없으면 폐기 현황이 비어있게 표시됩니다.</div>
+        <div class="status" data-slot="waste"></div>
+        <input type="file" accept=".xlsx,.xls,.csv" data-slot="waste">
+      </label>
+      <label class="drop optional" id="drop-pos">
+        <div class="idx">1-5</div>
+        <div class="name">POS별매출조회</div>
+        <div class="desc">POS·KIOSK 채널 매출 구분 + 매장명 자동 인식에 사용됩니다.</div>
+        <div class="status" data-slot="pos"></div>
+        <input type="file" accept=".xlsx,.xls,.csv" data-slot="pos">
+      </label>
+      <label class="drop optional" id="drop-target">
+        <div class="idx">1-6</div>
+        <div class="name">목표매출 (본사 배포 시트)</div>
+        <div class="desc">매장별 통합 시트를 그대로 올리면 매장을 자동으로 찾아 매칭합니다.</div>
+        <div class="status" data-slot="target"></div>
+        <input type="file" accept=".xlsx,.xls,.csv" data-slot="target">
+      </label>
+    </div>
+
+    <div class="store-box" id="storeBox">
+      <label>매장 매칭</label>
+      <select id="storeSelect"><option value="">목표매출 파일을 업로드하면 매장 목록이 표시됩니다</option></select>
+      <span class="store-tag manual" id="storeTag">선택 대기</span>
+    </div>
+
+    <button class="adv-toggle" id="advToggle">⚙ 고급 설정 — 매장명 표시 · 중분류 매핑 · 폐기 보정단가</button>
+    <div class="adv-panel" id="advPanel">
+      <div class="adv-field">
+        <label>매장명 (헤더에 표시 — 자동 매칭 시 자동 입력됨)</label>
+        <input type="text" id="storeNameInput" placeholder="예: 폴 바셋 OO점">
+      </div>
+      <div class="adv-field">
+        <label>중분류 → 대분류 9종 매핑 (JSON, 상품별매출내역조회raw의 중분류 열 문자열 기준)</label>
+        <textarea id="midMapInput"></textarea>
+      </div>
+      <div class="adv-field">
+        <label>폐기 보정단가표 (JSON, raw 단가가 0/공란일 때만 사용)</label>
+        <textarea id="priceMapInput"></textarea>
+      </div>
+    </div>
+
+    <div class="run-row">
+      <button class="btn" id="runBtn" disabled>대시보드 생성</button>
+      <span id="runMsg"></span>
+    </div>
+
+    <p class="footer-note">대시보드 관련 문의<br>운영지원팀 김새롬 | ☎ 02-2056-4295 | ✉ julysr@maeil.com</p>
+  </div>
+</div>
+
+<!-- ============ DASHBOARD SCREEN ============ -->
+<div id="dashScreen"></div>
+
+<script>
+/* ============================================================
+   -1. BRAND LOGO (embedded, from uploaded Paul Bassett logo file)
+   ============================================================ */
+
+/* ============================================================
+   0. CONFIG DEFAULTS
+   ============================================================ */
+const DEFAULT_MID_MAP = {
+  "[엠즈S]매장제조음료(커피)": "커피",
+  "매장제조음료(커피외)": "음료",
+  "ICE-CREAM": "아이스크림",
+  "푸드": "푸드",
+  "원두": "원두",
+  "MD상품": "MD상품",
+  "BEVERAGE": "BEVERAGE",
+  "원부재료·소모품": "원부재료/소모품",
+  "서비스·기타": "서비스",
+  "옵션·합계": "서비스"
+};
+const MID_CATS = ["커피","음료","아이스크림","푸드","원두","MD상품","BEVERAGE","원부재료/소모품","서비스","기타"];
+const MID_KEYWORDS = [
+  {kw:'커피외', cat:'음료'},
+  {kw:'커피', cat:'커피'},
+  {kw:'ICE', cat:'아이스크림'},
+  {kw:'아이스크림', cat:'아이스크림'},
+  {kw:'푸드', cat:'푸드'},
+  {kw:'원두', cat:'원두'},
+  {kw:'MD', cat:'MD상품'},
+  {kw:'BEVERAGE', cat:'BEVERAGE'},
+  {kw:'원부재료', cat:'원부재료/소모품'},
+  {kw:'소모품', cat:'원부재료/소모품'},
+  {kw:'서비스', cat:'서비스'},
+  {kw:'옵션', cat:'서비스'},
+  {kw:'합계', cat:'서비스'},
+];
+const DEFAULT_PRICE_MAP = {
+  "[O]BY 나타 오리지널_75g*60EA/BOX": 694,
+  "[O]BY 나타 초콜릿_75g*60EA/BOX": 711,
+  "[O]BY 나타 애플_75g*60EA/BOX": 712
+};
+document.getElementById('midMapInput').value = JSON.stringify(DEFAULT_MID_MAP, null, 2);
+document.getElementById('priceMapInput').value = JSON.stringify(DEFAULT_PRICE_MAP, null, 2);
+document.getElementById('advToggle').addEventListener('click', ()=>{
+  document.getElementById('advPanel').classList.toggle('open');
+});
+
+/* ============================================================
+   1. FILE HANDLING (click + drag & drop)
+   ============================================================ */
+const files = { cur:null, prev:null, prod:null, waste:null, pos:null, target:null };
+const REQUIRED = ['cur'];
+let targetWBCache = null;   // {sheetNames, sheets}
+let posStoreCandidate = null;
+let storeListCache = [];    // [{label, sheet}]
+
+document.addEventListener('dragover', e=>e.preventDefault());
+document.addEventListener('drop', e=>e.preventDefault());
+
+document.querySelectorAll('.drop').forEach(dropEl=>{
+  const inp = dropEl.querySelector('input[type=file]');
+  const slot = inp.dataset.slot;
+  inp.addEventListener('change', (e)=>{
+    const f = e.target.files[0];
+    if(f) handleFileForSlot(slot, f, dropEl);
+  });
+  dropEl.addEventListener('dragover', (e)=>{ e.preventDefault(); dropEl.classList.add('dragover'); });
+  dropEl.addEventListener('dragleave', (e)=>{ dropEl.classList.remove('dragover'); });
+  dropEl.addEventListener('drop', (e)=>{
+    e.preventDefault(); dropEl.classList.remove('dragover');
+    const f = e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f) handleFileForSlot(slot, f, dropEl);
+  });
+});
+
+function handleFileForSlot(slot, f, dropEl){
+  files[slot] = f;
+  const statusEl = dropEl.querySelector('.status');
+  statusEl.textContent = '✓ ' + f.name;
+  dropEl.classList.add('filled');
+  checkReady();
+  if(slot === 'target') loadTargetWorkbookForMatching(f);
+  if(slot === 'pos') loadPosStoreCandidate(f);
+}
+function checkReady(){
+  const storeOk = files.target ? !!document.getElementById('storeSelect').value : true;
+  const ok = REQUIRED.every(s=>files[s]) && storeOk;
+  document.getElementById('runBtn').disabled = !ok;
+}
+
+function readWorkbookAOA(file, cellDates){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      try{
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, {type:'array', cellDates: !!cellDates});
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(sheet, {header:1, raw:true, defval:null});
+        resolve(aoa);
+      }catch(err){ reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+function readWorkbookAllSheets(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      try{
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, {type:'array', cellDates:true});
+        const sheets = {};
+        wb.SheetNames.forEach(n=>{
+          sheets[n] = XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:true, defval:null});
+        });
+        resolve({sheetNames: wb.SheetNames, sheets});
+      }catch(err){ reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/* ---- store auto-matching ---- */
+function normStoreName(s){
+  return str(s).replace(/\s+/g,'').replace(/[·ㆍ]/g,'').toLowerCase();
+}
+function guessStoreNameCol(aoa, startRow=0, scanRows=200){
+  const counts = {};
+  for(let r=startRow; r<Math.min(aoa.length, startRow+scanRows); r++){
+    const row = aoa[r]||[];
+    row.forEach((c,ci)=>{
+      if(typeof c==='string' && /^\d{2,4}\.\s*\S/.test(c.trim())){
+        counts[ci] = (counts[ci]||0)+1;
+      }
+    });
+  }
+  let best=-1, bestCnt=0;
+  for(const k in counts){ if(counts[k]>bestCnt){ bestCnt=counts[k]; best=+k; } }
+  return bestCnt>=3 ? best : -1;
+}
+function collectStoreList(aoa, nameCol){
+  const set = new Set();
+  aoa.forEach(row=>{
+    if(!row) return;
+    const v = str(row[nameCol]);
+    if(v && /^\d{2,4}\.\s*\S/.test(v) && !v.includes('합계')) set.add(v);
+  });
+  return Array.from(set);
+}
+
+async function loadTargetWorkbookForMatching(file){
+  const select = document.getElementById('storeSelect');
+  const tag = document.getElementById('storeTag');
+  select.innerHTML = '<option value="">불러오는 중...</option>';
+  try{
+    targetWBCache = await readWorkbookAllSheets(file);
+    // find the best sheet to source a store list: prefer one containing many YYYYMMDD-style date headers (daily target sheet)
+    let bestSheet = null, bestCol = -1, bestList = [];
+    targetWBCache.sheetNames.forEach(name=>{
+      const aoa = targetWBCache.sheets[name];
+      const col = guessStoreNameCol(aoa);
+      if(col>=0){
+        const list = collectStoreList(aoa, col);
+        if(list.length > bestList.length){ bestSheet = name; bestCol = col; bestList = list; }
+      }
+    });
+    storeListCache = bestList.map(label=>({label, sheet:bestSheet, col:bestCol}));
+    if(!storeListCache.length){
+      select.innerHTML = '<option value="">매장 목록을 찾지 못했습니다 — 단일 매장 파일로 처리합니다</option>';
+      tag.textContent = '단일 매장';
+      tag.className = 'store-tag manual';
+      document.getElementById('storeBox').classList.add('show');
+      checkReady();
+      return;
+    }
+    select.innerHTML = '<option value="">매장을 선택하세요</option>' +
+      storeListCache.map(s=>`<option value="${s.label.replace(/"/g,'&quot;')}">${s.label}</option>`).join('');
+    document.getElementById('storeBox').classList.add('show');
+    tryAutoSelectStore();
+  }catch(err){
+    console.error(err);
+    select.innerHTML = '<option value="">파일을 읽지 못했습니다</option>';
+  }
+  checkReady();
+}
+async function loadPosStoreCandidate(file){
+  try{
+    const aoa = await readWorkbookAOA(file, false);
+    const rows = aoa.slice(1);
+    const found = rows.find(r=>r && str(r[0]) && str(r[0])!=='합계');
+    posStoreCandidate = found ? str(found[0]) : null;
+    tryAutoSelectStore();
+  }catch(err){ console.error(err); }
+}
+function tryAutoSelectStore(){
+  if(!posStoreCandidate || !storeListCache.length) return;
+  const target = normStoreName(posStoreCandidate);
+  let match = storeListCache.find(s=>normStoreName(s.label)===target);
+  if(!match) match = storeListCache.find(s=>normStoreName(s.label).includes(target) || target.includes(normStoreName(s.label)));
+  const select = document.getElementById('storeSelect');
+  const tag = document.getElementById('storeTag');
+  if(match){
+    select.value = match.label;
+    tag.textContent = '자동 매칭됨 (POS 파일 기준)';
+    tag.className = 'store-tag auto';
+    onStoreSelected();
+  }
+  checkReady();
+}
+document.getElementById('storeSelect').addEventListener('change', ()=>{
+  const tag = document.getElementById('storeTag');
+  tag.textContent = '직접 선택됨';
+  tag.className = 'store-tag manual';
+  onStoreSelected();
+  checkReady();
+});
+function onStoreSelected(){
+  const label = document.getElementById('storeSelect').value;
+  if(label){
+    const clean = label.replace(/^\d{2,4}\.\s*/, '');
+    document.getElementById('storeNameInput').value = '폴 바셋 ' + clean;
+  }
+}
+
+/* ============================================================
+   2. PARSING HELPERS
+   ============================================================ */
+function pad2(n){ return String(n).padStart(2,'0'); }
+function excelSerialToDateStr(serial){
+  const utcDays = Math.floor(serial - 25569);
+  const utcMs = utcDays * 86400 * 1000;
+  const d = new Date(utcMs);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth()+1)}-${pad2(d.getUTCDate())}`;
+}
+function normalizeDateStr(v){
+  if(v===null||v===undefined||v==='') return null;
+  if(v instanceof Date) return `${v.getUTCFullYear()}-${pad2(v.getUTCMonth()+1)}-${pad2(v.getUTCDate())}`;
+  if(typeof v==='number') return excelSerialToDateStr(v);
+  const s = String(v).trim();
+  let m = s.match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+  if(m) return `${m[1]}-${pad2(+m[2])}-${pad2(+m[3])}`;
+  m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if(m) return m[1];
+  return null;
+}
+function num(v){
+  if(v===null||v===undefined||v==='') return 0;
+  if(typeof v==='number') return v;
+  const s = String(v).replace(/[,\s₩%]/g,'');
+  const f = parseFloat(s);
+  return isNaN(f) ? 0 : f;
+}
+function str(v){ return (v===null||v===undefined) ? '' : String(v).trim(); }
+function isoDow(dateStr){
+  const d = new Date(dateStr + 'T00:00:00Z');
+  const jsDow = d.getUTCDay();
+  return jsDow===0 ? 7 : jsDow;
+}
+function daysInMonth(y,m){ return new Date(Date.UTC(y, m, 0)).getUTCDate(); }
+function fmtWon(v){ if(v===null||v===undefined||!isFinite(v)) return '-'; return Math.round(v).toLocaleString('ko-KR') + '원'; }
+function fmtNum(v){ if(v===null||v===undefined||!isFinite(v)) return '-'; return Math.round(v).toLocaleString('ko-KR'); }
+function fmtPct(v, digits=1){ if(v===null||v===undefined||!isFinite(v)) return '-'; return (v*100).toFixed(digits) + '%'; }
+function fmtSignedPct(v, digits=1){ if(v===null||v===undefined||!isFinite(v)) return '-'; const s=(v*100).toFixed(digits); return (v>0?'+':'')+s+'%'; }
+
+function mapMidCategory(raw, midMap){
+  const trimmed = str(raw);
+  if(midMap[trimmed]) return midMap[trimmed];
+  const norm = trimmed.replace(/\[.*?\]/g,'').replace(/[·ㆍ]/g,'').trim();
+  for(const k in midMap){
+    const kn = k.replace(/\[.*?\]/g,'').replace(/[·ㆍ]/g,'').trim();
+    if(kn===norm) return midMap[k];
+  }
+  for(const {kw,cat} of MID_KEYWORDS){ if(trimmed.includes(kw)) return cat; }
+  return '기타';
+}
+function findHeaderRow(aoa, keywords, maxScan=6){
+  for(let r=0;r<Math.min(maxScan, aoa.length);r++){
+    const row = aoa[r]||[];
+    const joined = row.map(c=>str(c)).join('|');
+    if(keywords.some(k=>joined.includes(k))) return r;
+  }
+  return -1;
+}
+function findCol(aoa, headerRowIdx, keyword, fallbackIdx){
+  if(headerRowIdx<0) return fallbackIdx;
+  for(let rr=Math.max(0,headerRowIdx-1); rr<=headerRowIdx; rr++){
+    const row = aoa[rr]||[];
+    for(let c=0;c<row.length;c++){
+      if(str(row[c]).includes(keyword)) return c;
+    }
+  }
+  return fallbackIdx;
+}
+
+const COL = {
+  dae:   { date:0, weekday:1, headcount:5, headcost:6, net:11, delivery:[44,45,58,59,63] },
+  jeon:  { date:0, net:11, headcount:5, headcost:6 },
+  waste: { date:1, name:3, price:5, qty:7, reason:10 },
+  pos:   { store:0, posno:1, date:2, net:13 },
+};
+
+/* ---- target workbook: dynamic detection helpers ---- */
+function findDailyDateHeaderRow(aoa, YEAR){
+  for(let r=0;r<20;r++){
+    const row = aoa[r]||[];
+    let cnt=0, firstCol=-1;
+    row.forEach((c,ci)=>{
+      if(typeof c==='number'){
+        const s = String(Math.round(c));
+        if(s.length===8 && s.startsWith(String(YEAR))){ cnt++; if(firstCol===-1) firstCol=ci; }
+      }
+    });
+    if(cnt>=10) return {row:r, startCol:firstCol};
+  }
+  return null;
+}
+function findDailyDateObjHeaderRow(aoa){
+  for(let r=0;r<20;r++){
+    const row = aoa[r]||[];
+    let cnt=0, firstCol=-1;
+    row.forEach((c,ci)=>{
+      if(c instanceof Date){ cnt++; if(firstCol===-1) firstCol=ci; }
+    });
+    if(cnt>=10) return {row:r, startCol:firstCol};
+  }
+  return null;
+}
+function findMonthBlocks(aoa){
+  // 일부 시트는 같은 행에 '매출액' 블록과 '영업이익' 블록처럼 월 헤더가 두 번 이상 나란히 나온다.
+  // 첫 매치 열부터 12칸을 무조건 연속으로 읽으면 다른 블록 값을 섞어 읽거나(혹은 빈 칸을 0으로
+  // 잘못 채워) 특정 월(예: 6월) 실적이 비어 보이는 문제가 생긴다. 그래서 월 라벨들을
+  // "월 번호가 1씩 증가하는 연속 구간(블록)"으로 묶은 뒤, 가장 왼쪽(=주 지표, 보통 매출) 블록을 쓴다.
+  for(let r=0;r<20;r++){
+    const row = aoa[r]||[];
+    const matches = [];
+    row.forEach((c,ci)=>{
+      if(typeof c==='string'){
+        const m = c.trim().match(/^(\d{1,2})월$/);
+        if(m) matches.push({col:ci, month:+m[1]});
+      }
+    });
+    if(matches.length>=3){
+      const blocks = [];
+      let cur = [matches[0]];
+      for(let i=1;i<matches.length;i++){
+        if(matches[i].month === cur[cur.length-1].month+1){ cur.push(matches[i]); }
+        else { blocks.push(cur); cur=[matches[i]]; }
+      }
+      blocks.push(cur);
+      blocks.sort((a,b)=>a[0].col-b[0].col);
+      return { row:r, blocks };
+    }
+  }
+  return null;
+}
+function monthBlockToColMap(block){
+  const colMap = new Array(12).fill(null);
+  block.forEach(({col,month})=>{ if(month>=1 && month<=12) colMap[month-1]=col; });
+  return colMap;
+}
+function findAnnualBlockAnySheet(sheetNames, sheets){
+  // "구분" 라벨 행 옆에 1월~12월이 나열되고, 그 아래쪽 같은 열에 '...계획'(목표), '...실적'(실적)
+  // 라벨이 있는 표를 찾는다. (예: 매장별 목표매출 파일의 B62:O65 영역 — 구분/누적/1월..12월 헤더,
+  // 사업계획 행, 26년 실적 행)
+  for(const sname of sheetNames){
+    const aoa = sheets[sname];
+    for(let r=0; r<aoa.length; r++){
+      const row = aoa[r]||[];
+      let labelCol=-1;
+      for(let ci=0; ci<row.length; ci++){ if(str(row[ci])==='구분'){ labelCol=ci; break; } }
+      if(labelCol<0) continue;
+      const monthCols=[];
+      row.forEach((c,ci)=>{
+        if(typeof c==='string'){ const m=c.trim().match(/^(\d{1,2})월$/); if(m) monthCols.push({col:ci, month:+m[1]}); }
+      });
+      if(monthCols.length<10) continue;
+      const colMap = monthBlockToColMap(monthCols);
+      let targetRow=-1, actualRow=-1;
+      for(let rr=r+1; rr<Math.min(aoa.length, r+12); rr++){
+        const lbl = str((aoa[rr]||[])[labelCol]);
+        if(lbl.includes('계획') && targetRow<0) targetRow=rr;
+        if(lbl.includes('실적') && actualRow<0) actualRow=rr;
+      }
+      if(targetRow>=0 && actualRow>=0){
+        return { sheetName:sname, aoa, colMap, targetRow, actualRow };
+      }
+    }
+  }
+  return null;
+}
+function findWeekdayRowNear(aoa, dateRowIdx, startCol){
+  const wdChars = ['월','화','수','목','금','토','일','공휴일','T-DAY'];
+  for(let r=dateRowIdx; r<=dateRowIdx+2 && r<aoa.length; r++){
+    const row = aoa[r]||[];
+    let cnt=0;
+    for(let c=startCol; c<startCol+10 && c<row.length; c++){
+      if(wdChars.includes(str(row[c]))) cnt++;
+    }
+    if(cnt>=5) return r;
+  }
+  return dateRowIdx+1;
+}
+function findStoreRowInSheet(aoa, nameCol, targetNorm){
+  for(let r=0;r<aoa.length;r++){
+    const row = aoa[r];
+    if(!row) continue;
+    if(normStoreName(row[nameCol])===targetNorm) return r;
+  }
+  for(let r=0;r<aoa.length;r++){
+    const row = aoa[r];
+    if(!row) continue;
+    const cn = normStoreName(row[nameCol]);
+    if(cn && (cn.includes(targetNorm) || targetNorm.includes(cn))) return r;
+  }
+  return -1;
+}
+
+/* ============================================================
+   3. MAIN COMPUTATION
+   ============================================================ */
+async function computeAll(){
+  const aoaCur = await readWorkbookAOA(files.cur, false);
+  const aoaPrev = files.prev ? await readWorkbookAOA(files.prev, false) : null;
+  const aoaProd = files.prod ? await readWorkbookAOA(files.prod, false) : null;
+  const aoaWaste = files.waste ? await readWorkbookAOA(files.waste, false) : null;
+  const aoaPos = files.pos ? await readWorkbookAOA(files.pos, false) : null;
+  const targetWB = files.target ? (targetWBCache || await readWorkbookAllSheets(files.target)) : null;
+
+  let midMap, priceMap;
+  try{ midMap = JSON.parse(document.getElementById('midMapInput').value); }catch(e){ midMap = DEFAULT_MID_MAP; }
+  try{ priceMap = JSON.parse(document.getElementById('priceMapInput').value); }catch(e){ priceMap = DEFAULT_PRICE_MAP; }
+
+  const storeLabel = document.getElementById('storeSelect').value;
+  const storeNorm = storeLabel ? normStoreName(storeLabel) : null;
+
+  // ---- rows (skip header) ----
+  const curRows = aoaCur.slice(1).filter(r=>r && normalizeDateStr(r[COL.dae.date]));
+  const prevRows = aoaPrev ? aoaPrev.slice(1).filter(r=>r && normalizeDateStr(r[COL.jeon.date])) : [];
+  const prodHeaderRow = aoaProd ? findHeaderRow(aoaProd, ['중분류','소분류','상품명']) : -1;
+  const PCOL = {
+    date: findCol(aoaProd||[], prodHeaderRow, '매출일자', 1),
+    mid:  findCol(aoaProd||[], prodHeaderRow, '중분류', 3),
+    sub:  findCol(aoaProd||[], prodHeaderRow, '소분류', 4),
+    name: findCol(aoaProd||[], prodHeaderRow, '상품명', 6),
+    qty:  findCol(aoaProd||[], prodHeaderRow, '총수량', 8),
+    net:  findCol(aoaProd||[], prodHeaderRow, '순매출', 13),
+  };
+  const prodDataStart = prodHeaderRow>=0 ? prodHeaderRow+1 : 2;
+  const prodRows = aoaProd ? aoaProd.slice(prodDataStart).filter(r=>r && normalizeDateStr(r[PCOL.date]) && str(r[PCOL.name])!=='' && str(r[PCOL.name])!=='합계') : [];
+  const wasteRows = aoaWaste ? aoaWaste.slice(2).filter(r=>r && normalizeDateStr(r[COL.waste.date])) : [];
+  const posRows = aoaPos ? aoaPos.slice(1).filter(r=>r && str(r[COL.pos.store])!=='합계' && normalizeDateStr(r[COL.pos.date])) : [];
+
+  // ---- 2. global params ----
+  const firstDateStr = normalizeDateStr(curRows[0][COL.dae.date]);
+  const [YEAR, MONTH] = firstDateStr.split('-').map(Number);
+  const DIM = daysInMonth(YEAR, MONTH);
+
+  const curByDate = new Map();
+  curRows.forEach(r=>{ const d = normalizeDateStr(r[COL.dae.date]); if(d) curByDate.set(d, r); });
+  const prevByDate = new Map();
+  prevRows.forEach(r=>{ const d = normalizeDateStr(r[COL.jeon.date]); if(d) prevByDate.set(d, num(r[COL.jeon.net])); });
+  const prevRawByDate = new Map();
+  prevRows.forEach(r=>{ const d = normalizeDateStr(r[COL.jeon.date]); if(d) prevRawByDate.set(d, r); });
+
+  /* ---- target data: try multi-store template, fallback to legacy single-sheet fixed layout ---- */
+  let dailyTarget = new Array(DIM).fill(0);
+  let weekdayTextArr = new Array(DIM).fill('');
+  let monthTargetTotal = 0;
+  let monthlyTargets12 = new Array(12).fill(0);
+  let monthlyActuals12 = new Array(12).fill(0);
+  let lastYearDailyFromTarget = null; // array length DIM or null
+
+  let matchedMultiStore = false;
+  if(storeLabel){
+    for(const sname of targetWB.sheetNames){
+      const aoa = targetWB.sheets[sname];
+      const info = findDailyDateHeaderRow(aoa, YEAR);
+      if(!info) continue;
+      const nameCol = guessStoreNameCol(aoa);
+      if(nameCol<0) continue;
+      const storeRow = findStoreRowInSheet(aoa, nameCol, storeNorm);
+      if(storeRow<0) continue;
+      // locate day columns by exact YYYYMMDD match
+      const wdRow = findWeekdayRowNear(aoa, info.row, info.startCol);
+      let ok = true;
+      for(let day=1; day<=DIM; day++){
+        const target8 = YEAR*10000 + MONTH*100 + day;
+        let col = -1;
+        for(let c=info.startCol; c<info.startCol+40 && c<(aoa[info.row]||[]).length; c++){
+          if(Math.round(num(aoa[info.row][c])) === target8){ col=c; break; }
+        }
+        if(col<0){ ok=false; break; }
+        dailyTarget[day-1] = num(aoa[storeRow][col]);
+        weekdayTextArr[day-1] = str(aoa[wdRow] ? aoa[wdRow][col] : '');
+      }
+      if(ok){ matchedMultiStore = true; break; }
+    }
+    // monthly plan (targets) & monthly actuals — 우선 "구분/1월..12월 + 사업계획/26년 실적" 형태의
+    // 전용 연간 실적표(예: 매장별 목표매출 파일 B62:O65)를 먼저 찾는다. 이 표는 매장 선택과 무관하게
+    // 이미 해당 매장 기준으로 값이 채워져 있는 표이므로 매장 행을 다시 찾을 필요가 없다.
+    const annualBlock = findAnnualBlockAnySheet(targetWB.sheetNames, targetWB.sheets);
+    if(annualBlock){
+      monthlyTargets12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.targetRow][c]));
+      monthlyActuals12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.actualRow][c]));
+    } else {
+      // fallback: 매장별로 나뉜 "26년 사업계획"/"26년 실적" 형태의 시트에서 매장 행을 찾아 읽는다.
+      for(const sname of targetWB.sheetNames){
+        const aoa = targetWB.sheets[sname];
+        const info = findMonthBlocks(aoa);
+        if(!info) continue;
+        const nameCol = guessStoreNameCol(aoa);
+        if(nameCol<0) continue;
+        const storeRow = findStoreRowInSheet(aoa, nameCol, storeNorm);
+        if(storeRow<0) continue;
+        const colMap = monthBlockToColMap(info.blocks[0]);
+        const vals = colMap.map(c => c===null ? 0 : num(aoa[storeRow][c]));
+        const looksLikeTarget = str(sname).includes('계획');
+        const looksLikeActual = str(sname).includes('실적');
+        if(looksLikeTarget && vals.some(v=>v>0)) monthlyTargets12 = vals;
+        else if(looksLikeActual && vals.some(v=>v>0)) monthlyActuals12 = vals;
+        else if(!looksLikeTarget && !looksLikeActual){
+          if(monthlyTargets12.every(v=>v===0)) monthlyTargets12 = vals;
+          else if(monthlyActuals12.every(v=>v===0)) monthlyActuals12 = vals;
+        }
+      }
+    }
+    // last-year same-weekday daily sheet
+    for(const sname of targetWB.sheetNames){
+      if(!str(sname).includes('동요일') && !str(sname).includes('전년')) continue;
+      const aoa = targetWB.sheets[sname];
+      const info = findDailyDateObjHeaderRow(aoa);
+      if(!info) continue;
+      const nameCol = guessStoreNameCol(aoa, 0, 300) >=0 ? guessStoreNameCol(aoa,0,300) : 0;
+      const storeRow = findStoreRowInSheet(aoa, nameCol, storeNorm);
+      if(storeRow<0) continue;
+      const arr = [];
+      for(let day=1; day<=DIM; day++){
+        const c = info.startCol + (day-1);
+        arr.push(c < (aoa[storeRow]||[]).length ? num(aoa[storeRow][c]) : 0);
+      }
+      lastYearDailyFromTarget = arr;
+      break;
+    }
+    if(matchedMultiStore){
+      // "당월 목표"는 사업계획(연간 계획)이 아니라 실제 운영에 반영되는 일자별 목표의 합을 사용한다.
+      // (지점별로 사업계획 대비 운영목표가 재조정될 수 있어 두 값이 다를 수 있음)
+      monthTargetTotal = dailyTarget.reduce((s,v)=>s+v,0);
+    }
+  }
+
+  if(!matchedMultiStore && targetWB){
+    // legacy fixed-position single-sheet layout (first sheet of workbook)
+    const T = targetWB.sheets[targetWB.sheetNames[0]];
+    const rowWeekdayText = T[30] || [];
+    const rowDailyTarget = T[32] || [];
+    monthTargetTotal = num(T[4] ? T[4][2] : 0);
+    if(monthlyTargets12.every(v=>v===0) && monthlyActuals12.every(v=>v===0)){
+      for(let i=0;i<12;i++){
+        monthlyTargets12[i] = num(T[62] ? T[62][3+i] : 0);
+        monthlyActuals12[i] = num(T[64] ? T[64][3+i] : 0);
+      }
+    }
+    for(let day=1; day<=DIM; day++){
+      const colIdx = 3 + (day-1);
+      dailyTarget[day-1] = num(rowDailyTarget[colIdx]);
+      weekdayTextArr[day-1] = str(rowWeekdayText[colIdx]);
+    }
+  }
+
+  // ---- 3. daily table ----
+  const daily = [];
+  for(let day=1; day<=DIM; day++){
+    const dateStr = `${YEAR}-${pad2(MONTH)}-${pad2(day)}`;
+    const curRow = curByDate.get(dateStr);
+    const net = curRow ? num(curRow[COL.dae.net]) : 0;
+    const target = dailyTarget[day-1] || 0;
+    const weekdayText = weekdayTextArr[day-1] || '';
+    const isHoliday = weekdayText === '공휴일' || weekdayText === 'T-DAY';
+    const dow = isoDow(dateStr);
+    const dowGroup = isHoliday ? 7 : dow;
+
+    let lastYearNet = 0;
+    if(lastYearDailyFromTarget){
+      lastYearNet = lastYearDailyFromTarget[day-1] || 0;
+    } else {
+      const lyDateStr = `${YEAR-1}-${pad2(MONTH)}-${pad2(day)}`;
+      lastYearNet = prevByDate.has(lyDateStr) ? prevByDate.get(lyDateStr) : 0;
+    }
+
+    const headcount = curRow ? num(curRow[COL.dae.headcount]) : 0;
+    const headcost = curRow ? num(curRow[COL.dae.headcost]) : 0;
+
+    let posNet = 0, kioskNet = 0;
+    posRows.forEach(r=>{
+      if(normalizeDateStr(r[COL.pos.date]) !== dateStr) return;
+      const posno = str(r[COL.pos.posno]);
+      const v = num(r[COL.pos.net]);
+      if(posno.startsWith('000')) posNet += v;
+      else if(posno.startsWith('003')) kioskNet += v;
+    });
+
+    let deliveryNet = 0;
+    if(curRow){ COL.dae.delivery.forEach(ci=>{ deliveryNet += num(curRow[ci]); }); }
+
+    daily.push({
+      day, dateStr, net, target,
+      achieveRate: target>0 ? net/target : 0,
+      lastYearNet,
+      yoyGrowth: lastYearNet>0 ? (net/lastYearNet - 1) : null,
+      headcount, headcost, posNet, kioskNet, deliveryNet,
+      weekdayText, isHoliday, dow, dowGroup
+    });
+  }
+
+  const DAY_CUTOFF = (()=>{ let last=0; daily.forEach(d=>{ if(d.net>0) last=d.day; }); return last||1; })();
+
+  const cumNet = daily.reduce((s,d)=>s+d.net,0);
+  const cumTarget = daily.filter(d=>d.day<=DAY_CUTOFF).reduce((s,d)=>s+d.target,0);
+  const cumLastYear = daily.filter(d=>d.day<=DAY_CUTOFF).reduce((s,d)=>s+d.lastYearNet,0);
+  const lastYearMonthTotal = daily.reduce((s,d)=>s+d.lastYearNet,0);
+  const cumHeadcount = daily.filter(d=>d.day<=DAY_CUTOFF).reduce((s,d)=>s+d.headcount,0);
+
+  const posTotal = daily.reduce((s,d)=>s+d.posNet,0);
+  const kioskTotal = daily.reduce((s,d)=>s+d.kioskNet,0);
+  const deliveryTotal = daily.reduce((s,d)=>s+d.deliveryNet,0);
+
+  const avgHeadcount = (()=>{ const hs=daily.filter(d=>d.headcount>0); return hs.length? hs.reduce((s,d)=>s+d.headcount,0)/hs.length:0; })();
+  const avgHeadcost = cumHeadcount>0 ? cumNet/cumHeadcount : 0;
+
+  function groupStats(pred){
+    const ds = daily.filter(d=>pred(d) && d.net>0);
+    return {
+      avgNet: ds.length ? ds.reduce((s,d)=>s+d.net,0)/ds.length : 0,
+      avgHeadcount: (()=>{ const hs=ds.filter(d=>d.headcount>0); return hs.length? hs.reduce((s,d)=>s+d.headcount,0)/hs.length:0; })(),
+      avgHeadcost: (()=>{ const hs=ds.filter(d=>d.headcost>0); return hs.length? hs.reduce((s,d)=>s+d.headcost,0)/hs.length:0; })(),
+    };
+  }
+  const weekdayStats = groupStats(d=>!d.isHoliday && d.dow<=5);
+  const weekendStats = groupStats(d=>d.isHoliday || d.dow>=6);
+
+  // ---- last-year traffic (조수/조단가, 평일·주말) — 전년 raw 파일이 있어야만 계산 가능 (헤드카운트 열은 이 파일에만 있음) ----
+  // 전년도 1달 전체 실적 기준으로 집계합니다 (당월 기준일과 무관).
+  let lastYearTraffic = null;
+  if(aoaPrev){
+    const lyDIM = daysInMonth(YEAR-1, MONTH);
+    const lyDays = [];
+    for(let day=1; day<=lyDIM; day++){
+      const lyDateStr = `${YEAR-1}-${pad2(MONTH)}-${pad2(day)}`;
+      const row = prevRawByDate.get(lyDateStr);
+      if(!row) continue;
+      lyDays.push({
+        day,
+        net: num(row[COL.jeon.net]),
+        headcount: num(row[COL.jeon.headcount]),
+        headcost: num(row[COL.jeon.headcost]),
+        dow: isoDow(lyDateStr)
+      });
+    }
+    const lyCumNet = lyDays.reduce((s,d)=>s+d.net,0);
+    const lyCumHeadcount = lyDays.reduce((s,d)=>s+d.headcount,0);
+    const lyAvgHeadcount = (()=>{ const hs=lyDays.filter(d=>d.headcount>0); return hs.length? hs.reduce((s,d)=>s+d.headcount,0)/hs.length:0; })();
+    const lyHeadcost = lyCumHeadcount>0 ? lyCumNet/lyCumHeadcount : 0;
+    function lyGroupStats(pred){
+      const ds = lyDays.filter(d=>pred(d) && d.net>0);
+      return {
+        avgNet: ds.length ? ds.reduce((s,d)=>s+d.net,0)/ds.length : 0,
+        avgHeadcount: (()=>{ const hs=ds.filter(d=>d.headcount>0); return hs.length? hs.reduce((s,d)=>s+d.headcount,0)/hs.length:0; })(),
+        avgHeadcost: (()=>{ const hs=ds.filter(d=>d.headcost>0); return hs.length? hs.reduce((s,d)=>s+d.headcost,0)/hs.length:0; })(),
+      };
+    }
+    lastYearTraffic = {
+      avgHeadcount: lyAvgHeadcount,
+      headcost: lyHeadcost,
+      weekdayStats: lyGroupStats(d=>d.dow<=5),
+      weekendStats: lyGroupStats(d=>d.dow>=6),
+    };
+  }
+
+  // ---- 4. category aggregation ----
+  const monthProdRows = prodRows.filter(r=>{
+    const d = normalizeDateStr(r[PCOL.date]);
+    if(!d) return false;
+    const [y,m] = d.split('-').map(Number);
+    return y===YEAR && m===MONTH;
+  });
+  const midAgg = {}; MID_CATS.forEach(c=>midAgg[c] = {qty:0, net:0});
+  const subAgg = {};
+  const midDetailRaw = {}; MID_CATS.forEach(c=> midDetailRaw[c] = {subs:{}, prods:{}});
+  monthProdRows.forEach(r=>{
+    const midRaw = str(r[PCOL.mid]);
+    const subRaw = str(r[PCOL.sub]);
+    const name = str(r[PCOL.name]);
+    const qty = num(r[PCOL.qty]);
+    const net = num(r[PCOL.net]);
+    const mapped = mapMidCategory(midRaw, midMap);
+    midAgg[mapped].qty += qty; midAgg[mapped].net += net;
+    if(!subAgg[subRaw]) subAgg[subRaw] = {qty:0, net:0};
+    subAgg[subRaw].qty += qty; subAgg[subRaw].net += net;
+    const dRaw = midDetailRaw[mapped];
+    if(!dRaw.subs[subRaw]) dRaw.subs[subRaw] = {qty:0, net:0};
+    dRaw.subs[subRaw].qty += qty; dRaw.subs[subRaw].net += net;
+    if(name && name!=='합계'){
+      if(!dRaw.prods[name]) dRaw.prods[name] = {qty:0, net:0};
+      dRaw.prods[name].qty += qty; dRaw.prods[name].net += net;
+    }
+  });
+  const midTotal = Object.values(midAgg).reduce((s,v)=>s+v.net,0);
+  const subTotal = Object.values(subAgg).reduce((s,v)=>s+v.net,0);
+  const midList = MID_CATS.map(c=>({name:c, ...midAgg[c], share: midTotal>0? midAgg[c].net/midTotal : 0})).sort((a,b)=>b.net-a.net);
+  const subList = Object.keys(subAgg).map(k=>({name:k, ...subAgg[k], share: subTotal>0? subAgg[k].net/subTotal:0})).sort((a,b)=>b.net-a.net);
+
+  const midDetailList = {};
+  MID_CATS.forEach(c=>{
+    const catNet = midAgg[c].net;
+    const catQty = midAgg[c].qty;
+    const subs = Object.keys(midDetailRaw[c].subs).map(k=>({name:k, ...midDetailRaw[c].subs[k], share: catNet>0? midDetailRaw[c].subs[k].net/catNet:0})).sort((a,b)=>b.net-a.net);
+    const prods = Object.keys(midDetailRaw[c].prods).map(k=>({name:k, ...midDetailRaw[c].prods[k]}))
+      .sort((a,b)=>b.net-a.net).slice(0,20)
+      .map((p,i)=>({rank:i+1, ...p, share: catNet>0? p.net/catNet:0}));
+    midDetailList[c] = { subs, subTotal: catNet, prods, prodQtyTotal: catQty };
+  });
+
+  // ---- 5. product TOP20 ----
+  const prodGroup = {};
+  monthProdRows.forEach(r=>{
+    const name = str(r[PCOL.name]);
+    if(!name || name==='합계') return;
+    if(!prodGroup[name]) prodGroup[name] = {qty:0, net:0};
+    prodGroup[name].qty += num(r[PCOL.qty]);
+    prodGroup[name].net += num(r[PCOL.net]);
+  });
+  const prodTotalNet = Object.values(prodGroup).reduce((s,v)=>s+v.net,0);
+  const prodTotalQty = Object.values(prodGroup).reduce((s,v)=>s+v.qty,0);
+  const productTop20 = Object.keys(prodGroup).map(k=>({name:k, ...prodGroup[k]}))
+    .sort((a,b)=>b.net-a.net).slice(0,20)
+    .map((p,i)=>({rank:i+1, ...p, share: prodTotalNet>0? p.net/prodTotalNet:0}));
+
+  // ---- 6. waste TOP20 ----
+  const monthWasteRows = wasteRows.filter(r=>{
+    const d = normalizeDateStr(r[COL.waste.date]);
+    if(!d) return false;
+    const [y,m] = d.split('-').map(Number);
+    return y===YEAR && m===MONTH;
+  }).map((r, idx)=>({ r, idx }));
+  const wasteGroup = {};
+  monthWasteRows.forEach(({r, idx})=>{
+    const name = str(r[COL.waste.name]);
+    const reason = str(r[COL.waste.reason]);
+    if(!name) return;
+    const key = name + '|||' + reason;
+    let price = num(r[COL.waste.price]);
+    if(!price) price = num(priceMap[name]) || 0;
+    const qty = num(r[COL.waste.qty]);
+    const amt = qty * price;
+    const dateStr = normalizeDateStr(r[COL.waste.date]);
+    if(!wasteGroup[key]) wasteGroup[key] = {name, reason, qty:0, amt:0, firstIdx: idx, lastDate: dateStr};
+    wasteGroup[key].qty += qty; wasteGroup[key].amt += amt;
+    if(!wasteGroup[key].lastDate || dateStr > wasteGroup[key].lastDate) wasteGroup[key].lastDate = dateStr;
+  });
+  const wasteTotalAmt = Object.values(wasteGroup).reduce((s,v)=>s+v.amt,0);
+  const wasteTotalQty = Object.values(wasteGroup).reduce((s,v)=>s+v.qty,0);
+  const wasteRate = cumNet>0 ? wasteTotalAmt/cumNet : 0;
+  const wasteTop20 = Object.values(wasteGroup).sort((a,b)=> b.amt-a.amt || a.firstIdx-b.firstIdx).slice(0,20)
+    .map((w,i)=>({ rank:i+1, name:w.name, qty:w.qty, amt:w.amt, unitPrice: w.qty>0? w.amt/w.qty:0, rate: cumNet>0? w.amt/cumNet:0, reason:w.reason, date:w.lastDate }));
+
+  // ---- 7. day-of-week averages & forecast ----
+  // 요일별 평균매출(7-1)은 "이미 지난 날짜"만으로 평균을 내야 한다. 아직 오지 않은 날짜를 0으로
+  // 평균에 섞으면 평균이 실제보다 낮게 나오고, 그 평균 x 전체 일수(7-2)가 결국 누계 매출과
+  // 정확히 같아져 버리는 문제가 생긴다(평균 희석분과 일수 확대분이 서로 상쇄되기 때문).
+  // 따라서 평균은 DAY_CUTOFF 이전(이미 영업이 끝난 날)만 대상으로 하고,
+  // 일수(count)는 스펙대로 월 전체 기준으로 둔다.
+  const dowStats = [];
+  for(let g=1; g<=7; g++){
+    const fullMonthMatched = g<=6 ? daily.filter(d=>d.dow===g && !d.isHoliday) : daily.filter(d=>d.dow===7 || d.isHoliday);
+    const occurredMatched = fullMonthMatched.filter(d=>d.day<=DAY_CUTOFF);
+    const avg = occurredMatched.length ? occurredMatched.reduce((s,d)=>s+d.net,0)/occurredMatched.length : 0;
+    dowStats.push({ g, label:['월','화','수','목','금','토','일'][g-1], avg, count: fullMonthMatched.length, occurredCount: occurredMatched.length });
+  }
+  let forecast;
+  if(DAY_CUTOFF < 8){
+    forecast = cumTarget>0 ? monthTargetTotal * (cumNet/cumTarget) : 0;
+  } else {
+    forecast = dowStats.reduce((s,d)=>s + d.avg*d.count, 0);
+  }
+
+  // ---- 8-10 annual table ----
+  const actualsWithForecast = monthlyActuals12.slice();
+  actualsWithForecast[MONTH-1] = forecast;
+  const annual = [];
+  for(let i=0;i<12;i++){
+    const target = monthlyTargets12[i];
+    const actual = actualsWithForecast[i];
+    const prevActual = i>0 ? actualsWithForecast[i-1] : null;
+    annual.push({
+      month:i+1, target, actual, isCurrent:(i+1)===MONTH,
+      achieveRate: target>0 ? actual/target : null,
+      mom: (prevActual!==null && prevActual>0) ? (actual-prevActual)/prevActual : null
+    });
+  }
+  const annualTargetSum = monthlyTargets12.reduce((s,v)=>s+v,0);
+  const annualActualSum = actualsWithForecast.reduce((s,v)=>s+v,0);
+
+  return {
+    YEAR, MONTH, DIM, DAY_CUTOFF,
+    storeName: str(document.getElementById('storeNameInput').value) || '폴 바셋',
+    storeMatchMode: !targetWB ? 'none' : (matchedMultiStore ? 'auto' : 'legacy'),
+    daily, cumNet, cumTarget, cumLastYear, lastYearMonthTotal, monthTargetTotal,
+    posTotal, kioskTotal, deliveryTotal, avgHeadcount, avgHeadcost,
+    weekdayStats, weekendStats, lastYearTraffic,
+    midList, midTotal, subList, subTotal, midDetailList,
+    productTop20, prodTotalNet, prodTotalQty,
+    wasteTop20, wasteTotalAmt, wasteTotalQty, wasteRate, hasWaste: !!aoaWaste,
+    hasProd: !!aoaProd, hasPos: !!aoaPos, hasTarget: !!targetWB,
+    hasPrevYear: !!aoaPrev || !!lastYearDailyFromTarget,
+    dowStats, forecast, annual, annualTargetSum, annualActualSum
+  };
+}
+
+/* ============================================================
+   4. RENDER
+   ============================================================ */
+let CURRENT_KPI = null;
+
+function gaugeSVG(rate){
+  const pct = Math.max(0, Math.min(rate, 1.5));
+  const deg = Math.min(pct, 1) * 360;
+  const color = rate>=1 ? 'var(--positive)' : 'var(--accent)';
+  return `<div class="gauge" style="background:conic-gradient(${color} ${deg}deg, var(--surface-3) ${deg}deg)"><div class="hole">${fmtPct(rate,0)}</div></div>`;
+}
+function barCell(value, max){
+  const pct = max>0 ? Math.min(100, (value/max)*100) : 0;
+  return `<div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>`;
+}
+
+function annualChartSVG(annual){
+  const W = 900, H = 320, padL = 50, padR = 20, padT = 20, padB = 34;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const maxVal = Math.max(...annual.map(a=>Math.max(a.target, a.actual)), 1);
+  const n = annual.length;
+  const groupW = plotW / n;
+  const barW = groupW * 0.30;
+  let bars = '';
+  const linePts = [];
+  annual.forEach((a,i)=>{
+    const gx = padL + i*groupW + groupW/2;
+    const tH = (a.target/maxVal) * plotH;
+    const aH = (a.actual/maxVal) * plotH;
+    const tX = gx - barW - 3;
+    const aX = gx + 3;
+    bars += `<rect x="${tX}" y="${padT+plotH-tH}" width="${barW}" height="${tH}" rx="2" fill="var(--surface-3)" stroke="var(--border)"/>`;
+    bars += `<rect x="${aX}" y="${padT+plotH-aH}" width="${barW}" height="${aH}" rx="2" fill="${a.isCurrent? 'var(--accent-bright)' : 'var(--accent)'}"/>`;
+    bars += `<text x="${gx}" y="${H-10}" text-anchor="middle" font-size="11" fill="var(--text-mute)" font-family="Noto Sans KR">${a.month}월</text>`;
+    const rate = a.achieveRate===null ? null : Math.min(a.achieveRate, 1.6);
+    const ly = rate===null ? null : padT + plotH - (rate/1.6)*plotH;
+    if(ly!==null) linePts.push([gx, ly]);
+  });
+  let linePath = '';
+  if(linePts.length){
+    linePath = 'M' + linePts.map(p=>p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' L');
+  }
+  const dots = linePts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3.5" fill="var(--text)"/>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;font-family:'Noto Sans KR'">
+    <line x1="${padL}" y1="${padT+plotH}" x2="${W-padR}" y2="${padT+plotH}" stroke="var(--text)" stroke-width="1.5"/>
+    ${bars}
+    <path d="${linePath}" fill="none" stroke="var(--text)" stroke-width="2"/>
+    ${dots}
+  </svg>`;
+}
+
+function render(res){
+  document.getElementById('uploadScreen').style.display = 'none';
+  const el = document.getElementById('dashScreen');
+  el.style.display = 'block';
+
+  const kpi = res;
+  CURRENT_KPI = kpi;
+  const cumGrowth = kpi.cumLastYear>0 ? (kpi.cumNet/kpi.cumLastYear - 1) : null;
+  const cumAchieve = kpi.cumTarget>0 ? kpi.cumNet/kpi.cumTarget : 0;
+  const monthAchieve = kpi.monthTargetTotal>0 ? kpi.forecast/kpi.monthTargetTotal : 0;
+  const forecastGrowth = kpi.lastYearMonthTotal>0 ? (kpi.forecast/kpi.lastYearMonthTotal - 1) : null;
+  const channelTotal = kpi.posTotal + kpi.kioskTotal + kpi.deliveryTotal;
+
+  el.innerHTML = `
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div class="brand-mark" style="height:44px"></div>
+        <div>
+          <div class="store">${kpi.storeName} <span class="period">· ${kpi.MONTH}월 실적</span></div>
+          <div class="meta">기준연도 ${kpi.YEAR} · 기준일 ${kpi.DAY_CUTOFF}일까지 반영 (자동 산출) · 총 ${kpi.DIM}일 · 매장 매칭: ${kpi.storeMatchMode==='auto'?'자동(다매장 파일)':(kpi.storeMatchMode==='legacy'?'단일 매장 파일':'목표매출 파일 미제공')}</div>
+        </div>
+      </div>
+      <div class="actions"><button class="btn ghost small" onclick="location.reload()">다시 업로드</button></div>
+    </div>
+
+    ${block('KPI', '당월 누계 실적', `
+      <div class="cards">
+        <div class="card"><div class="label">당월 누계 매출</div><div class="value">${fmtWon(kpi.cumNet)}</div></div>
+        <div class="card"><div class="label">누계 목표</div><div class="value">${fmtWon(kpi.cumTarget)}</div></div>
+        <div class="card gauge-card">${gaugeSVG(cumAchieve)}<div><div class="label">누계 달성률</div><div class="value" style="font-size:1.3rem">${fmtPct(cumAchieve)}</div></div></div>
+        <div class="card"><div class="label">전년 동기 매출</div><div class="value">${kpi.hasPrevYear? fmtWon(kpi.cumLastYear) : '-'}</div>
+          <div class="sub">${kpi.hasPrevYear? `전년비 <span class="${cumGrowth>=0?'pos':'neg'}">${fmtSignedPct(cumGrowth)}</span>` : '전년 데이터 없음'}</div></div>
+      </div>
+    `)}
+
+    ${block('FORECAST', '당월 예상 실적', `
+      <div class="cards">
+        <div class="card"><div class="label">예상 매출</div><div class="value">${fmtWon(kpi.forecast)}</div>
+          <div class="sub">${kpi.DAY_CUTOFF<8 ? '누계 실적/목표 비율 기반 추정' : '요일별 평균 매출 기반 추정'}</div></div>
+        <div class="card"><div class="label">당월 목표</div><div class="value">${fmtWon(kpi.monthTargetTotal)}</div></div>
+        <div class="card gauge-card">${gaugeSVG(monthAchieve)}<div><div class="label">목표 달성률</div><div class="value" style="font-size:1.3rem">${fmtPct(monthAchieve)}</div></div></div>
+        <div class="card"><div class="label">전년 동월 매출</div><div class="value">${kpi.hasPrevYear? fmtWon(kpi.lastYearMonthTotal):'-'}</div>
+          <div class="sub">${kpi.hasPrevYear? `전년비 <span class="${forecastGrowth>=0?'pos':'neg'}">${fmtSignedPct(forecastGrowth)}</span>` : '전년 데이터 없음'}</div></div>
+      </div>
+    `)}
+
+    ${block('TRAFFIC', '조수 · 조단가 / 채널별 매출', `
+      <div class="two-col">
+        <div class="cards" style="grid-template-columns:repeat(2,1fr)">
+          <div class="card"><div class="label">일평균 조수</div><div class="value">${fmtNum(kpi.avgHeadcount)}<span style="font-size:.9rem;color:var(--text-mute)">명</span></div></div>
+          <div class="card"><div class="label">조단가</div><div class="value">${fmtWon(kpi.avgHeadcost)}</div></div>
+          <div class="card"><div class="label">전년도 조수</div><div class="value">${kpi.lastYearTraffic? fmtNum(kpi.lastYearTraffic.avgHeadcount) : '-'}${kpi.lastYearTraffic?'<span style="font-size:.9rem;color:var(--text-mute)">명</span>':''}</div>${kpi.lastYearTraffic?'':'<div class="sub">전년 파일 필요</div>'}</div>
+          <div class="card"><div class="label">전년도 조단가</div><div class="value">${kpi.lastYearTraffic? fmtWon(kpi.lastYearTraffic.headcost) : '-'}</div>${kpi.lastYearTraffic?'':'<div class="sub">전년 파일 필요</div>'}</div>
+        </div>
+        <div class="chan-grid">
+          ${channelCard('POS', kpi.posTotal, channelTotal)}
+          ${channelCard('KIOSK', kpi.kioskTotal, channelTotal)}
+          ${channelCard('배달', kpi.deliveryTotal, channelTotal)}
+        </div>
+      </div>
+      ${kpi.hasPos ? '' : '<p class="note">POS별매출조회 파일이 없어 POS·KIOSK 채널 구분은 0으로 표시됩니다.</p>'}
+    `)}
+
+    ${block('CALENDAR', '평일 · 주말 일평균', `
+      <div class="dow-grid">
+        ${dowCard('평일 (월~금, 공휴일 제외)', kpi.weekdayStats)}
+        ${dowCard('주말 (토·일 + 공휴일)', kpi.weekendStats)}
+        ${kpi.lastYearTraffic ? dowCard('전년도 평일 (월~금)', kpi.lastYearTraffic.weekdayStats) : dowCardEmpty('전년도 평일 (월~금)')}
+        ${kpi.lastYearTraffic ? dowCard('전년도 주말 (토·일)', kpi.lastYearTraffic.weekendStats) : dowCardEmpty('전년도 주말 (토·일)')}
+      </div>
+    `)}
+
+    ${block('CATEGORY', '카테고리별 매출 — 대분류', kpi.hasProd ? `
+      ${catTable(kpi.midList, kpi.midTotal, false, true)}
+      <p class="note">대분류를 클릭하면 소분류·상품별 상세 내역이 표시됩니다.</p>
+      <div id="midDetailPanel" style="display:none"></div>
+    ` : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
+    ${block('CATEGORY', '카테고리별 매출 — 소분류', kpi.hasProd ? catTable(kpi.subList, kpi.subTotal, true) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
+
+    ${block('RANKING', '상품 판매 TOP 20', kpi.hasProd ? productTable(kpi.productTop20, kpi.prodTotalQty, kpi.prodTotalNet) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
+
+    ${block('WASTE', '폐기 현황', wasteBlock(kpi))}
+
+    ${block('ANNUAL', '연간 월별 실적', `
+      <div class="chart-legend">
+        <span><i style="background:var(--surface-3);border:1px solid var(--border)"></i>목표</span>
+        <span><i style="background:var(--accent)"></i>실적</span>
+        <span><i style="background:var(--text);border-radius:50%"></i>달성률(선)</span>
+      </div>
+      <div class="tablewrap" style="padding:16px 20px;margin-bottom:16px">${annualChartSVG(kpi.annual)}</div>
+      ${annualTable(kpi)}
+    `)}
+  `;
+}
+
+function block(eyebrow, title, inner){
+  return `<section class="block">
+    <div class="block-head"><span class="eyebrow">${eyebrow}</span><div class="rule"></div></div>
+    <h2 class="block-title">${title}</h2>
+    <div style="margin-top:14px">${inner}</div>
+  </section>`;
+}
+function channelCard(label, value, total){
+  const share = total>0 ? value/total : 0;
+  return `<div class="card"><div class="label">${label}</div><div class="value" style="font-size:1.25rem">${fmtWon(value)}</div><div class="sub">비중 ${fmtPct(share)}</div>${barCell(value, total)}</div>`;
+}
+function dowCard(title, stats){
+  return `<div class="card"><div class="label">${title}</div><div class="value" style="font-size:1.2rem">${fmtWon(stats.avgNet)}<span style="font-size:.7rem;color:var(--text-mute)"> /일</span></div><div class="sub">일평균 조수 ${fmtNum(stats.avgHeadcount)}명 · 일평균 조단가 ${fmtWon(stats.avgHeadcost)}</div></div>`;
+}
+function dowCardEmpty(title){
+  return `<div class="card"><div class="label">${title}</div><div class="value" style="font-size:1.2rem">-</div><div class="sub">전년 파일 필요</div></div>`;
+}
+function catTable(list, total, isSub, clickable){
+  if(!list.length || total===0) return `<div class="empty-hint">데이터가 없습니다. 상품별매출내역조회 파일의 매출일자·중분류·소분류 열 위치를 확인해주세요.</div>`;
+  const max = list.length ? Math.max(...list.map(x=>x.net)) : 0;
+  const rows = list.map(x=>{
+    const nameEsc = String(x.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const attrs = clickable ? ` class="mid-row" data-cat="${escapeHtml(x.name)}" onclick="showMidDetail('${nameEsc}')"` : '';
+    return `<tr${attrs}><td>${x.name}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.net)}</td><td>${fmtPct(x.share)}</td><td class="bar-cell" style="width:140px">${barCell(x.net, max)}</td></tr>`;
+  }).join('');
+  return `<div class="tablewrap"><table class="dt">
+    <thead><tr><th>${isSub?'소분류':'대분류'}</th><th>수량</th><th>매출(VAT 별도)</th><th>비중</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td>합계</td><td>${fmtNum(list.reduce((s,x)=>s+x.qty,0))}</td><td>${fmtWon(total)}</td><td>100.0%</td><td></td></tr></tfoot>
+  </table></div>`;
+}
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function showMidDetail(cat){
+  const panel = document.getElementById('midDetailPanel');
+  if(!panel || !CURRENT_KPI) return;
+  const detail = CURRENT_KPI.midDetailList[cat];
+  if(!detail) return;
+  const isOpenSame = panel.dataset.cat === cat && panel.style.display !== 'none';
+  document.querySelectorAll('.mid-row').forEach(r=>r.classList.remove('active'));
+  if(isOpenSame){
+    panel.style.display = 'none';
+    panel.dataset.cat = '';
+    return;
+  }
+  const rowEl = document.querySelector(`.mid-row[data-cat="${CSS.escape(cat)}"]`);
+  if(rowEl) rowEl.classList.add('active');
+  panel.dataset.cat = cat;
+  panel.style.display = 'block';
+  const prodList = detail.prods.map(p=>({rank:p.rank, name:p.name, qty:p.qty, net:p.net, share:p.share}));
+  const prodQtySum = detail.prods.reduce((s,p)=>s+p.qty,0);
+  panel.innerHTML = `
+    <div class="block-head" style="margin-top:18px"><span class="eyebrow">DETAIL</span><div class="rule"></div></div>
+    <h3 style="font-family:'Noto Sans KR';font-weight:800;font-size:1.05rem;margin:0 0 12px">${escapeHtml(cat)} — 소분류 · 상품 상세</h3>
+    <div class="two-col">
+      <div>${catTable(detail.subs, detail.subTotal, true)}</div>
+      <div>${productTable(prodList, prodQtySum, detail.subTotal)}</div>
+    </div>
+  `;
+}
+function productTable(list, totalQty, totalNet){
+  if(!list.length) return `<div class="empty-hint">데이터가 없습니다.</div>`;
+  const max = Math.max(...list.map(x=>x.net));
+  const rows = list.map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.name}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.net)}</td><td>${fmtPct(x.share)}</td><td class="bar-cell" style="width:120px">${barCell(x.net, max)}</td></tr>`).join('');
+  return `<div class="tablewrap"><table class="dt">
+    <thead><tr><th>순위</th><th style="text-align:left">상품명</th><th>판매수량</th><th>매출(VAT 별도)</th><th>비중</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td></td><td style="text-align:left">전체 합계</td><td>${fmtNum(totalQty)}</td><td>${fmtWon(totalNet)}</td><td>100.0%</td><td></td></tr></tfoot>
+  </table></div>`;
+}
+function wasteBlock(kpi){
+  if(!kpi.hasWaste) return `<div class="empty-hint">재고폐기등록raw 파일이 업로드되지 않았습니다.</div>`;
+  if(!kpi.wasteTop20.length) return `<div class="empty-hint">이번 달 폐기 데이터가 없습니다.</div>`;
+  const summary = `<div class="cards" style="margin-bottom:14px">
+    <div class="card"><div class="label">폐기 수량</div><div class="value">${fmtNum(kpi.wasteTotalQty)}</div></div>
+    <div class="card"><div class="label">폐기금액(VAT 별도)</div><div class="value">${fmtWon(kpi.wasteTotalAmt)}</div></div>
+    <div class="card"><div class="label">폐기율</div><div class="value">${fmtPct(kpi.wasteRate, 2)}</div><div class="sub">폐기금액(VAT 별도) / 당월 누계 매출</div></div>
+  </div>`;
+  const rows = kpi.wasteTop20.map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.name}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.unitPrice)}</td><td>${fmtWon(x.amt)}</td><td>${fmtPct(x.rate,2)}</td><td style="text-align:left"><span class="pill">${x.reason||'-'}</span></td><td class="mono">${x.date||'-'}</td></tr>`).join('');
+  return summary + `<div class="tablewrap"><table class="dt">
+    <thead><tr><th>순위</th><th style="text-align:left">상품명</th><th>폐기수량</th><th>단가</th><th>폐기금액(VAT 별도)</th><th>폐기율</th><th style="text-align:left">폐기사유</th><th>폐기일자</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+function annualTable(kpi){
+  const rows = kpi.annual.map(a=>`<tr style="${a.isCurrent?'background:var(--accent-soft)':''}">
+      <td style="text-align:left">${a.month}월 ${a.isCurrent?'<span class=\"pill\">전망 반영</span>':''}</td>
+      <td>${fmtWon(a.target)}</td><td>${fmtWon(a.actual)}</td>
+      <td>${a.achieveRate===null?'-':fmtPct(a.achieveRate)}</td>
+      <td class="${a.mom===null?'':(a.mom>=0?'pos':'neg')}">${a.mom===null?'-':fmtSignedPct(a.mom)}</td>
+    </tr>`).join('');
+  return `<div class="tablewrap"><table class="dt">
+    <thead><tr><th style="text-align:left">월</th><th>목표</th><th>실적</th><th>달성률</th><th>전월대비</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td style="text-align:left">합계 · 월평균</td><td>${fmtWon(kpi.annualTargetSum)}</td><td>${fmtWon(kpi.annualActualSum)}</td><td>${kpi.annualTargetSum>0?fmtPct(kpi.annualActualSum/kpi.annualTargetSum):'-'}</td><td>월평균 ${fmtWon(kpi.annualActualSum/12)}</td></tr></tfoot>
+  </table></div>`;
+}
+
+/* ============================================================
+   5. RUN
+   ============================================================ */
+document.getElementById('runBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('runBtn');
+  const msg = document.getElementById('runMsg');
+  btn.disabled = true; btn.textContent = '분석 중...';
+  msg.textContent = '';
+  try{
+    const res = await computeAll();
+    render(res);
+  }catch(err){
+    console.error(err);
+    msg.textContent = '오류: ' + err.message + ' (파일 형식/열 위치를 확인해주세요)';
+    btn.disabled = false; btn.textContent = '대시보드 생성';
+  }
+});
+</script>
+</body>
+</html>
