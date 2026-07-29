@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>폴 바셋 매장 대시보드</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -24,6 +24,8 @@
     --accent-ink: #ffffff;
     --positive: #0E9F5A;
     --negative: #E4002B;
+    --info: #1E3A8A;
+    --info-soft: #EDF1FB;
     --shadow: 0 1px 2px rgba(20,20,25,.04), 0 6px 20px rgba(20,20,25,.05);
     --divider: repeating-linear-gradient(90deg, var(--border) 0, var(--border) 6px, transparent 6px, transparent 12px);
     font-size: 16px;
@@ -43,9 +45,9 @@
   ::-webkit-scrollbar-thumb{ background: var(--border); border-radius:6px; }
 
   .display{ font-family:'Noto Sans KR', sans-serif; font-weight:800; }
-  .mono{ font-family:'JetBrains Mono', monospace; }
+  .mono{ font-family:'Noto Sans KR', sans-serif; }
   .eyebrow{
-    font-family:'JetBrains Mono', monospace;
+    font-family:'Noto Sans KR', sans-serif;
     font-size:.7rem; letter-spacing:.16em; text-transform:uppercase;
     color: var(--accent); font-weight:700;
   }
@@ -68,7 +70,7 @@
   .subtitle{ color: var(--text-dim); font-size:1rem; margin:10px 0 36px; max-width:660px; line-height:1.65; }
 
   .upload-grid{
-    display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    display:grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
     gap:12px; margin-bottom: 20px;
   }
   .drop{
@@ -80,16 +82,16 @@
   .drop.filled{ border-style: solid; border-color: var(--positive); background: #F1FBF5; }
   .drop.required::before{
     content:"필수"; position:absolute; top:12px; right:14px; font-size:.62rem;
-    letter-spacing:.08em; color: var(--accent); font-family:'JetBrains Mono',monospace; font-weight:700;
+    letter-spacing:.08em; color: var(--accent); font-family:'Noto Sans KR', sans-serif; font-weight:700;
   }
   .drop.optional::before{
     content:"선택"; position:absolute; top:12px; right:14px; font-size:.62rem;
-    letter-spacing:.08em; color: var(--text-mute); font-family:'JetBrains Mono',monospace;
+    letter-spacing:.08em; color: var(--text-mute); font-family:'Noto Sans KR', sans-serif;
   }
-  .drop .idx{ font-family:'JetBrains Mono', monospace; font-size:.72rem; color: var(--accent); letter-spacing:.06em; font-weight:700; }
-  .drop .name{ font-weight:700; font-size:.98rem; margin:5px 0 4px; color: var(--text); padding-right:34px; }
+  .drop .idx{ font-family:'Noto Sans KR', sans-serif; font-size:.72rem; color: var(--accent); letter-spacing:.06em; font-weight:700; }
+  .drop .name{ font-weight:700; font-size:.92rem; margin:5px 0 4px; color: var(--text); padding-right:34px; white-space:nowrap; overflow:hidden; text-overflow:clip; }
   .drop .desc{ font-size:.78rem; color: var(--text-mute); line-height:1.45; }
-  .drop .status{ margin-top:10px; font-size:.78rem; color: var(--positive); font-family:'JetBrains Mono',monospace; word-break:break-all; font-weight:600; }
+  .drop .status{ margin-top:10px; font-size:.78rem; color: var(--positive); font-family:'Noto Sans KR', sans-serif; word-break:break-all; font-weight:600; }
   .drop input[type=file]{ display:none; }
 
   .store-box{
@@ -103,7 +105,7 @@
     padding:9px 12px; border-radius:8px; font-family:'Noto Sans KR'; font-size:.92rem; font-weight:600;
   }
   .store-box select:focus{ outline:none; border-color: var(--accent); }
-  .store-tag{ font-size:.74rem; font-family:'JetBrains Mono',monospace; padding:4px 10px; border-radius:20px; font-weight:700; }
+  .store-tag{ font-size:.74rem; font-family:'Noto Sans KR', sans-serif; padding:4px 10px; border-radius:20px; font-weight:700; }
   .store-tag.auto{ background: #E9F9EF; color: var(--positive); }
   .store-tag.manual{ background: var(--surface-3); color: var(--text-mute); }
 
@@ -122,7 +124,7 @@
   }
   .adv-field textarea{
     width:100%; background: #fff; border:1.5px solid var(--border); color: var(--text-dim);
-    padding:10px; border-radius:8px; font-family:'JetBrains Mono',monospace; font-size:.76rem; line-height:1.5;
+    padding:10px; border-radius:8px; font-family:'Noto Sans KR', sans-serif; font-size:.76rem; line-height:1.5;
     min-height:110px; resize:vertical;
   }
 
@@ -136,7 +138,7 @@
   .btn:disabled{ background: var(--surface-3); color: var(--text-mute); cursor:not-allowed; box-shadow:none; }
   .btn.ghost{ background:#fff; border:1.5px solid var(--border); color: var(--text-dim); box-shadow:none; }
   .btn.ghost:hover{ border-color: var(--accent); color: var(--accent); background:#fff; }
-  #runMsg{ font-size:.82rem; color: var(--accent); font-family:'JetBrains Mono',monospace; }
+  #runMsg{ font-size:.82rem; color: var(--accent); font-family:'Noto Sans KR', sans-serif; }
   .footer-note{ margin-top:40px; font-size:.78rem; color: var(--text-mute); line-height:1.6; }
 
   /* ---------- Dashboard screen ---------- */
@@ -147,7 +149,7 @@
   }
   .topbar .store{ font-size:1.7rem; font-weight:800; }
   .topbar .period{ color: var(--accent); }
-  .topbar .meta{ font-family:'JetBrains Mono',monospace; font-size:.78rem; color: var(--text-mute); margin-top:4px; }
+  .topbar .meta{ font-family:'Noto Sans KR', sans-serif; font-size:.78rem; color: var(--text-mute); margin-top:4px; }
   .topbar .actions{ display:flex; gap:10px; }
   .btn.small{ padding:8px 16px; font-size:.8rem; }
 
@@ -175,7 +177,7 @@
   }
   .gauge .hole{
     position:absolute; inset:7px; border-radius:50%; background: #fff;
-    display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace;
+    display:flex; align-items:center; justify-content:center; font-family:'Noto Sans KR', sans-serif;
     font-size:.68rem; font-weight:800; color: var(--text);
   }
 
@@ -183,10 +185,14 @@
   table.dt th{
     text-align:right; font-weight:700; color: var(--text-mute); font-size:.72rem; letter-spacing:.04em;
     text-transform:uppercase; padding:9px 10px; border-bottom:2px solid var(--text);
-    font-family:'JetBrains Mono',monospace;
+    font-family:'Noto Sans KR', sans-serif;
   }
   table.dt th:first-child, table.dt td:first-child{ text-align:left; }
-  table.dt td{ padding:9px 10px; border-bottom:1px solid var(--border-soft); text-align:right; }
+  table.dt td{ padding:9px 10px; border-bottom:1px solid var(--border-soft); text-align:right; white-space:nowrap; }
+  table.dt th{ white-space:nowrap; }
+  table.dt th.group-head{ text-align:center; font-size:.76rem; text-transform:none; letter-spacing:0; font-family:'Noto Sans KR',sans-serif; font-weight:800; border-bottom:2px solid; }
+  table.dt th.group-head.cur{ color:var(--accent); border-bottom-color:var(--accent); }
+  table.dt th.group-head.ly{ color:var(--info); border-bottom-color:var(--info); }
   table.dt tbody tr:hover{ background: var(--accent-soft); }
   table.dt tr.mid-row{ cursor:pointer; }
   table.dt tr.mid-row td:first-child{ font-weight:700; }
@@ -199,7 +205,7 @@
   .rankbadge{
     display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
     border-radius:50%; background: var(--text); color: #fff; font-size:.7rem;
-    font-family:'JetBrains Mono',monospace; font-weight:700;
+    font-family:'Noto Sans KR', sans-serif; font-weight:700;
   }
   .bar-cell{ position:relative; }
   .bar-track{ background: var(--surface-3); border-radius:3px; height:6px; width:100%; overflow:hidden; margin-top:4px; }
@@ -209,9 +215,11 @@
   @media (max-width: 900px){ .two-col{ grid-template-columns:1fr; } }
 
   .chan-grid, .dow-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px; }
+  .subgroup{ border:2px solid var(--info); border-radius:12px; padding:14px 14px 12px; margin-bottom:12px; }
+  .subgroup-label{ font-size:.82rem; font-weight:800; color:var(--info); margin-bottom:10px; font-family:'Noto Sans KR',sans-serif; }
 
   .note{ font-size:.76rem; color: var(--text-mute); margin-top:10px; line-height:1.5; }
-  .pill{ display:inline-block; padding:2px 8px; border-radius:20px; background: var(--surface-3); font-size:.68rem; color: var(--text-dim); font-family:'JetBrains Mono',monospace; font-weight:600; }
+  .pill{ display:inline-block; padding:2px 8px; border-radius:20px; background: var(--surface-3); font-size:.68rem; color: var(--text-dim); font-family:'Noto Sans KR', sans-serif; font-weight:600; }
 
   .empty-hint{ color: var(--text-mute); font-size:.85rem; padding:20px; text-align:center; }
 
@@ -252,31 +260,38 @@
         <div class="status" data-slot="prev"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="prev">
       </label>
-      <label class="drop optional" id="drop-prod">
-        <div class="idx">1-3</div>
-        <div class="name">상품별매출내역조회_일자별</div>
-        <div class="desc">카테고리 집계와 상품 판매 TOP 20의 원천 데이터입니다.</div>
-        <div class="status" data-slot="prod"></div>
-        <input type="file" accept=".xlsx,.xls,.csv" data-slot="prod">
-      </label>
-      <label class="drop optional" id="drop-waste">
-        <div class="idx">1-4</div>
-        <div class="name">재고폐기등록</div>
-        <div class="desc">폐기 TOP 20 및 폐기율 계산용. 없으면 폐기 현황이 비어있게 표시됩니다.</div>
-        <div class="status" data-slot="waste"></div>
-        <input type="file" accept=".xlsx,.xls,.csv" data-slot="waste">
-      </label>
       <label class="drop optional" id="drop-pos">
-        <div class="idx">1-5</div>
+        <div class="idx">1-3</div>
         <div class="name">POS별매출조회</div>
         <div class="desc">POS·KIOSK 채널 매출 구분 + 매장명 자동 인식에 사용됩니다.</div>
         <div class="status" data-slot="pos"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="pos">
       </label>
-      <label class="drop optional" id="drop-target">
+      <label class="drop optional" id="drop-prod">
+        <div class="idx">1-4</div>
+        <div class="name">상품별매출내역조회_일자별(당월)</div>
+        <div class="desc">카테고리 집계와 상품 판매 TOP 20의 원천 데이터입니다.</div>
+        <div class="status" data-slot="prod"></div>
+        <input type="file" accept=".xlsx,.xls,.csv" data-slot="prod">
+      </label>
+      <label class="drop optional" id="drop-prodPrev">
+        <div class="idx">1-5</div>
+        <div class="name">상품별매출내역조회_일자별(전년 동월)</div>
+        <div class="desc">카테고리별 매출(대분류·소분류·상품 상세)의 전년 대비 비교에 사용됩니다.</div>
+        <div class="status" data-slot="prodPrev"></div>
+        <input type="file" accept=".xlsx,.xls,.csv" data-slot="prodPrev">
+      </label>
+      <label class="drop optional" id="drop-waste">
         <div class="idx">1-6</div>
+        <div class="name">재고폐기등록</div>
+        <div class="desc">폐기 TOP 20 및 폐기율 계산용. 없으면 폐기 현황이 비어있게 표시됩니다.</div>
+        <div class="status" data-slot="waste"></div>
+        <input type="file" accept=".xlsx,.xls,.csv" data-slot="waste">
+      </label>
+      <label class="drop optional" id="drop-target">
+        <div class="idx">1-7</div>
         <div class="name">목표매출 (본사 배포 시트)</div>
-        <div class="desc">매장별 통합 시트를 그대로 올리면 매장을 자동으로 찾아 매칭합니다.</div>
+        <div class="desc">파일을 그대로 업로드하면 매장을 자동으로 찾아 매칭합니다.</div>
         <div class="status" data-slot="target"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="target">
       </label>
@@ -366,7 +381,7 @@ document.getElementById('advToggle').addEventListener('click', ()=>{
 /* ============================================================
    1. FILE HANDLING (click + drag & drop)
    ============================================================ */
-const files = { cur:null, prev:null, prod:null, waste:null, pos:null, target:null };
+const files = { cur:null, prev:null, prod:null, prodPrev:null, waste:null, pos:null, target:null };
 const REQUIRED = ['cur'];
 let targetWBCache = null;   // {sheetNames, sheets}
 let posStoreCandidate = null;
@@ -613,6 +628,56 @@ function findCol(aoa, headerRowIdx, keyword, fallbackIdx){
   return fallbackIdx;
 }
 
+function parseProdFile(aoa){
+  // 상품별매출내역조회_일자별raw 파싱 (당월/전년 공용). 매장명 열이 있으면(다매장 파일) 함께 반환.
+  if(!aoa) return null;
+  const headerRow = findHeaderRow(aoa, ['중분류','소분류','상품명']);
+  const PCOL = {
+    date:  findCol(aoa, headerRow, '매출일자', 1),
+    mid:   findCol(aoa, headerRow, '중분류', 3),
+    sub:   findCol(aoa, headerRow, '소분류', 4),
+    name:  findCol(aoa, headerRow, '상품명', 6),
+    qty:   findCol(aoa, headerRow, '총수량', 8),
+    net:   findCol(aoa, headerRow, '순매출', 13),
+    store: findCol(aoa, headerRow, '매장명', -1),
+  };
+  const dataStart = headerRow>=0 ? headerRow+1 : 2;
+  const rows = aoa.slice(dataStart).filter(r=>r && normalizeDateStr(r[PCOL.date]) && str(r[PCOL.name])!=='' && str(r[PCOL.name])!=='합계');
+  return { rows, PCOL };
+}
+function filterRowsByStore(rows, storeCol, storeNorm){
+  if(storeCol<0 || !storeNorm) return rows;
+  return rows.filter(r=>{
+    const cell = normStoreName(r[storeCol]);
+    if(!cell) return true; // 매장명 열이 비어있으면(단일 매장 파일 형태) 필터링하지 않음
+    return cell===storeNorm || cell.includes(storeNorm) || storeNorm.includes(cell);
+  });
+}
+function aggregateCategoryData(rows, PCOL, midMap){
+  const midAgg = {}; MID_CATS.forEach(c=>midAgg[c] = {qty:0, net:0});
+  const subAgg = {};
+  const detailRaw = {}; MID_CATS.forEach(c=> detailRaw[c] = {subs:{}, prods:{}});
+  rows.forEach(r=>{
+    const midRaw = str(r[PCOL.mid]);
+    const subRaw = str(r[PCOL.sub]);
+    const name = str(r[PCOL.name]);
+    const qty = num(r[PCOL.qty]);
+    const net = num(r[PCOL.net]);
+    const mapped = mapMidCategory(midRaw, midMap);
+    midAgg[mapped].qty += qty; midAgg[mapped].net += net;
+    if(!subAgg[subRaw]) subAgg[subRaw] = {qty:0, net:0};
+    subAgg[subRaw].qty += qty; subAgg[subRaw].net += net;
+    const dRaw = detailRaw[mapped];
+    if(!dRaw.subs[subRaw]) dRaw.subs[subRaw] = {qty:0, net:0};
+    dRaw.subs[subRaw].qty += qty; dRaw.subs[subRaw].net += net;
+    if(name && name!=='합계'){
+      if(!dRaw.prods[name]) dRaw.prods[name] = {qty:0, net:0};
+      dRaw.prods[name].qty += qty; dRaw.prods[name].net += net;
+    }
+  });
+  return { midAgg, subAgg, detailRaw };
+}
+
 const COL = {
   dae:   { date:0, weekday:1, headcount:5, headcost:6, net:11, delivery:[44,45,58,59,63] },
   jeon:  { date:0, net:11, headcount:5, headcost:6 },
@@ -696,14 +761,15 @@ function findAnnualBlockAnySheet(sheetNames, sheets){
       });
       if(monthCols.length<10) continue;
       const colMap = monthBlockToColMap(monthCols);
-      let targetRow=-1, actualRow=-1;
+      let targetRow=-1, actualRow=-1, lastYearRow=-1;
       for(let rr=r+1; rr<Math.min(aoa.length, r+12); rr++){
         const lbl = str((aoa[rr]||[])[labelCol]);
         if(lbl.includes('계획') && targetRow<0) targetRow=rr;
         if(lbl.includes('실적') && actualRow<0) actualRow=rr;
+        if(lbl.includes('전년') && lastYearRow<0) lastYearRow=rr;
       }
       if(targetRow>=0 && actualRow>=0){
-        return { sheetName:sname, aoa, colMap, targetRow, actualRow };
+        return { sheetName:sname, aoa, colMap, targetRow, actualRow, lastYearRow };
       }
     }
   }
@@ -743,6 +809,7 @@ async function computeAll(){
   const aoaCur = await readWorkbookAOA(files.cur, false);
   const aoaPrev = files.prev ? await readWorkbookAOA(files.prev, false) : null;
   const aoaProd = files.prod ? await readWorkbookAOA(files.prod, false) : null;
+  const aoaProdPrev = files.prodPrev ? await readWorkbookAOA(files.prodPrev, false) : null;
   const aoaWaste = files.waste ? await readWorkbookAOA(files.waste, false) : null;
   const aoaPos = files.pos ? await readWorkbookAOA(files.pos, false) : null;
   const targetWB = files.target ? (targetWBCache || await readWorkbookAllSheets(files.target)) : null;
@@ -757,17 +824,15 @@ async function computeAll(){
   // ---- rows (skip header) ----
   const curRows = aoaCur.slice(1).filter(r=>r && normalizeDateStr(r[COL.dae.date]));
   const prevRows = aoaPrev ? aoaPrev.slice(1).filter(r=>r && normalizeDateStr(r[COL.jeon.date])) : [];
-  const prodHeaderRow = aoaProd ? findHeaderRow(aoaProd, ['중분류','소분류','상품명']) : -1;
-  const PCOL = {
-    date: findCol(aoaProd||[], prodHeaderRow, '매출일자', 1),
-    mid:  findCol(aoaProd||[], prodHeaderRow, '중분류', 3),
-    sub:  findCol(aoaProd||[], prodHeaderRow, '소분류', 4),
-    name: findCol(aoaProd||[], prodHeaderRow, '상품명', 6),
-    qty:  findCol(aoaProd||[], prodHeaderRow, '총수량', 8),
-    net:  findCol(aoaProd||[], prodHeaderRow, '순매출', 13),
-  };
-  const prodDataStart = prodHeaderRow>=0 ? prodHeaderRow+1 : 2;
-  const prodRows = aoaProd ? aoaProd.slice(prodDataStart).filter(r=>r && normalizeDateStr(r[PCOL.date]) && str(r[PCOL.name])!=='' && str(r[PCOL.name])!=='합계') : [];
+
+  const prodParsed = parseProdFile(aoaProd);
+  const PCOL = prodParsed ? prodParsed.PCOL : { date:1, mid:3, sub:4, name:6, qty:8, net:13, store:-1 };
+  const prodRows = prodParsed ? filterRowsByStore(prodParsed.rows, PCOL.store, storeNorm) : [];
+
+  const prodPrevParsed = parseProdFile(aoaProdPrev);
+  const PCOL_LY = prodPrevParsed ? prodPrevParsed.PCOL : PCOL;
+  const prodPrevRows = prodPrevParsed ? filterRowsByStore(prodPrevParsed.rows, PCOL_LY.store, storeNorm) : [];
+
   const wasteRows = aoaWaste ? aoaWaste.slice(2).filter(r=>r && normalizeDateStr(r[COL.waste.date])) : [];
   const posRows = aoaPos ? aoaPos.slice(1).filter(r=>r && str(r[COL.pos.store])!=='합계' && normalizeDateStr(r[COL.pos.date])) : [];
 
@@ -789,6 +854,7 @@ async function computeAll(){
   let monthTargetTotal = 0;
   let monthlyTargets12 = new Array(12).fill(0);
   let monthlyActuals12 = new Array(12).fill(0);
+  let monthlyLastYear12 = new Array(12).fill(0);
   let lastYearDailyFromTarget = null; // array length DIM or null
 
   let matchedMultiStore = false;
@@ -823,6 +889,9 @@ async function computeAll(){
     if(annualBlock){
       monthlyTargets12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.targetRow][c]));
       monthlyActuals12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.actualRow][c]));
+      if(annualBlock.lastYearRow>=0){
+        monthlyLastYear12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.lastYearRow][c]));
+      }
     } else {
       // fallback: 매장별로 나뉜 "26년 사업계획"/"26년 실적" 형태의 시트에서 매장 행을 찾아 읽는다.
       for(const sname of targetWB.sheetNames){
@@ -879,6 +948,7 @@ async function computeAll(){
       for(let i=0;i<12;i++){
         monthlyTargets12[i] = num(T[62] ? T[62][3+i] : 0);
         monthlyActuals12[i] = num(T[64] ? T[64][3+i] : 0);
+        monthlyLastYear12[i] = num(T[63] ? T[63][3+i] : 0);
       }
     }
     for(let day=1; day<=DIM; day++){
@@ -1004,40 +1074,67 @@ async function computeAll(){
     const [y,m] = d.split('-').map(Number);
     return y===YEAR && m===MONTH;
   });
-  const midAgg = {}; MID_CATS.forEach(c=>midAgg[c] = {qty:0, net:0});
-  const subAgg = {};
-  const midDetailRaw = {}; MID_CATS.forEach(c=> midDetailRaw[c] = {subs:{}, prods:{}});
-  monthProdRows.forEach(r=>{
-    const midRaw = str(r[PCOL.mid]);
-    const subRaw = str(r[PCOL.sub]);
-    const name = str(r[PCOL.name]);
-    const qty = num(r[PCOL.qty]);
-    const net = num(r[PCOL.net]);
-    const mapped = mapMidCategory(midRaw, midMap);
-    midAgg[mapped].qty += qty; midAgg[mapped].net += net;
-    if(!subAgg[subRaw]) subAgg[subRaw] = {qty:0, net:0};
-    subAgg[subRaw].qty += qty; subAgg[subRaw].net += net;
-    const dRaw = midDetailRaw[mapped];
-    if(!dRaw.subs[subRaw]) dRaw.subs[subRaw] = {qty:0, net:0};
-    dRaw.subs[subRaw].qty += qty; dRaw.subs[subRaw].net += net;
-    if(name && name!=='합계'){
-      if(!dRaw.prods[name]) dRaw.prods[name] = {qty:0, net:0};
-      dRaw.prods[name].qty += qty; dRaw.prods[name].net += net;
-    }
+  const monthProdRowsLY = prodPrevRows.filter(r=>{
+    const d = normalizeDateStr(r[PCOL_LY.date]);
+    if(!d) return false;
+    const [y,m] = d.split('-').map(Number);
+    return y===(YEAR-1) && m===MONTH;
   });
+
+  const catCur = aggregateCategoryData(monthProdRows, PCOL, midMap);
+  const midAgg = catCur.midAgg, subAgg = catCur.subAgg, midDetailRaw = catCur.detailRaw;
+
+  const hasProdLY = monthProdRowsLY.length > 0;
+  let midAggLY = {}, subAggLY = {}, midDetailRawLY = {};
+  MID_CATS.forEach(c=>midAggLY[c] = {qty:0, net:0});
+  if(hasProdLY){
+    const catLY = aggregateCategoryData(monthProdRowsLY, PCOL_LY, midMap);
+    midAggLY = catLY.midAgg; subAggLY = catLY.subAgg; midDetailRawLY = catLY.detailRaw;
+  }
+  const midTotalLY = Object.values(midAggLY).reduce((s,v)=>s+v.net,0);
+  const subTotalLY = Object.values(subAggLY).reduce((s,v)=>s+v.net,0);
+
   const midTotal = Object.values(midAgg).reduce((s,v)=>s+v.net,0);
   const subTotal = Object.values(subAgg).reduce((s,v)=>s+v.net,0);
-  const midList = MID_CATS.map(c=>({name:c, ...midAgg[c], share: midTotal>0? midAgg[c].net/midTotal : 0})).sort((a,b)=>b.net-a.net);
-  const subList = Object.keys(subAgg).map(k=>({name:k, ...subAgg[k], share: subTotal>0? subAgg[k].net/subTotal:0})).sort((a,b)=>b.net-a.net);
+  const midList = MID_CATS.map(c=>{
+    const ly = hasProdLY ? midAggLY[c] : null;
+    return {
+      name:c, ...midAgg[c], share: midTotal>0? midAgg[c].net/midTotal : 0,
+      lyQty: ly? ly.qty : null, lyNet: ly? ly.net : null,
+      lyShare: (ly && midTotalLY>0) ? ly.net/midTotalLY : null,
+    };
+  }).sort((a,b)=>b.net-a.net);
+  const subList = Object.keys(subAgg).map(k=>{
+    const ly = hasProdLY ? subAggLY[k] : null;
+    return {
+      name:k, ...subAgg[k], share: subTotal>0? subAgg[k].net/subTotal:0,
+      lyQty: ly? ly.qty : null, lyNet: ly? ly.net : null,
+      lyShare: (ly && subTotalLY>0) ? ly.net/subTotalLY : null,
+    };
+  }).sort((a,b)=>b.net-a.net);
 
   const midDetailList = {};
   MID_CATS.forEach(c=>{
     const catNet = midAgg[c].net;
     const catQty = midAgg[c].qty;
-    const subs = Object.keys(midDetailRaw[c].subs).map(k=>({name:k, ...midDetailRaw[c].subs[k], share: catNet>0? midDetailRaw[c].subs[k].net/catNet:0})).sort((a,b)=>b.net-a.net);
-    const prods = Object.keys(midDetailRaw[c].prods).map(k=>({name:k, ...midDetailRaw[c].prods[k]}))
-      .sort((a,b)=>b.net-a.net).slice(0,20)
-      .map((p,i)=>({rank:i+1, ...p, share: catNet>0? p.net/catNet:0}));
+    const catNetLY = hasProdLY ? midAggLY[c].net : 0;
+    const detailLY = hasProdLY ? midDetailRawLY[c] : {subs:{}, prods:{}};
+    const subs = Object.keys(midDetailRaw[c].subs).map(k=>{
+      const ly = detailLY.subs[k];
+      return {
+        name:k, ...midDetailRaw[c].subs[k], share: catNet>0? midDetailRaw[c].subs[k].net/catNet:0,
+        lyQty: ly? ly.qty : null, lyNet: ly? ly.net : null,
+        lyShare: (ly && catNetLY>0) ? ly.net/catNetLY : null,
+      };
+    }).sort((a,b)=>b.net-a.net);
+    const prods = Object.keys(midDetailRaw[c].prods).map(k=>{
+      const ly = detailLY.prods[k];
+      return {
+        name:k, ...midDetailRaw[c].prods[k],
+        lyQty: ly? ly.qty : null, lyNet: ly? ly.net : null,
+      };
+    }).sort((a,b)=>b.net-a.net).slice(0,20)
+      .map((p,i)=>({rank:i+1, ...p, share: catNet>0? p.net/catNet:0, lyShare: (p.lyNet!=null && catNetLY>0)? p.lyNet/catNetLY : null }));
     midDetailList[c] = { subs, subTotal: catNet, prods, prodQtyTotal: catQty };
   });
 
@@ -1111,15 +1208,16 @@ async function computeAll(){
   for(let i=0;i<12;i++){
     const target = monthlyTargets12[i];
     const actual = actualsWithForecast[i];
-    const prevActual = i>0 ? actualsWithForecast[i-1] : null;
+    const lastYear = monthlyLastYear12[i];
     annual.push({
-      month:i+1, target, actual, isCurrent:(i+1)===MONTH,
+      month:i+1, target, actual, lastYear, isCurrent:(i+1)===MONTH,
       achieveRate: target>0 ? actual/target : null,
-      mom: (prevActual!==null && prevActual>0) ? (actual-prevActual)/prevActual : null
+      yoy: lastYear>0 ? (actual-lastYear)/lastYear : null
     });
   }
   const annualTargetSum = monthlyTargets12.reduce((s,v)=>s+v,0);
   const annualActualSum = actualsWithForecast.reduce((s,v)=>s+v,0);
+  const annualLastYearSum = monthlyLastYear12.reduce((s,v)=>s+v,0);
 
   return {
     YEAR, MONTH, DIM, DAY_CUTOFF,
@@ -1131,9 +1229,9 @@ async function computeAll(){
     midList, midTotal, subList, subTotal, midDetailList,
     productTop20, prodTotalNet, prodTotalQty,
     wasteTop20, wasteTotalAmt, wasteTotalQty, wasteRate, hasWaste: !!aoaWaste,
-    hasProd: !!aoaProd, hasPos: !!aoaPos, hasTarget: !!targetWB,
+    hasProd: !!aoaProd, hasProdLY, hasPos: !!aoaPos, hasTarget: !!targetWB,
     hasPrevYear: !!aoaPrev || !!lastYearDailyFromTarget,
-    dowStats, forecast, annual, annualTargetSum, annualActualSum
+    dowStats, forecast, annual, annualTargetSum, annualActualSum, annualLastYearSum
   };
 }
 
@@ -1156,19 +1254,22 @@ function barCell(value, max){
 function annualChartSVG(annual){
   const W = 900, H = 320, padL = 50, padR = 20, padT = 20, padB = 34;
   const plotW = W - padL - padR, plotH = H - padT - padB;
-  const maxVal = Math.max(...annual.map(a=>Math.max(a.target, a.actual)), 1);
+  const maxVal = Math.max(...annual.map(a=>Math.max(a.target, a.actual, a.lastYear)), 1);
   const n = annual.length;
   const groupW = plotW / n;
-  const barW = groupW * 0.30;
+  const barW = groupW * 0.22;
   let bars = '';
   const linePts = [];
   annual.forEach((a,i)=>{
     const gx = padL + i*groupW + groupW/2;
     const tH = (a.target/maxVal) * plotH;
+    const lyH = (a.lastYear/maxVal) * plotH;
     const aH = (a.actual/maxVal) * plotH;
-    const tX = gx - barW - 3;
-    const aX = gx + 3;
+    const tX = gx - barW*1.6;
+    const lyX = gx - barW*0.45;
+    const aX = gx + barW*0.7;
     bars += `<rect x="${tX}" y="${padT+plotH-tH}" width="${barW}" height="${tH}" rx="2" fill="var(--surface-3)" stroke="var(--border)"/>`;
+    bars += `<rect x="${lyX}" y="${padT+plotH-lyH}" width="${barW}" height="${lyH}" rx="2" fill="var(--text-mute)"/>`;
     bars += `<rect x="${aX}" y="${padT+plotH-aH}" width="${barW}" height="${aH}" rx="2" fill="${a.isCurrent? 'var(--accent-bright)' : 'var(--accent)'}"/>`;
     bars += `<text x="${gx}" y="${H-10}" text-anchor="middle" font-size="11" fill="var(--text-mute)" font-family="Noto Sans KR">${a.month}월</text>`;
     const rate = a.achieveRate===null ? null : Math.min(a.achieveRate, 1.6);
@@ -1213,7 +1314,7 @@ function render(res){
       <div class="actions"><button class="btn ghost small" onclick="location.reload()">다시 업로드</button></div>
     </div>
 
-    ${block('KPI', '당월 누계 실적', `
+    ${block('KPI', `당월 누계 실적(1일~${kpi.DAY_CUTOFF}일)`, `
       <div class="cards">
         <div class="card"><div class="label">당월 누계 매출</div><div class="value">${fmtWon(kpi.cumNet)}</div></div>
         <div class="card"><div class="label">누계 목표</div><div class="value">${fmtWon(kpi.cumTarget)}</div></div>
@@ -1223,7 +1324,7 @@ function render(res){
       </div>
     `)}
 
-    ${block('FORECAST', '당월 예상 실적', `
+    ${block('FORECAST', '당월 예상 실적(1일~말일)', `
       <div class="cards">
         <div class="card"><div class="label">예상 매출</div><div class="value">${fmtWon(kpi.forecast)}</div>
           <div class="sub">${kpi.DAY_CUTOFF<8 ? '누계 실적/목표 비율 기반 추정' : '요일별 평균 매출 기반 추정'}</div></div>
@@ -1236,11 +1337,21 @@ function render(res){
 
     ${block('TRAFFIC', '조수 · 조단가 / 채널별 매출', `
       <div class="two-col">
-        <div class="cards" style="grid-template-columns:repeat(2,1fr)">
-          <div class="card"><div class="label">일평균 조수</div><div class="value">${fmtNum(kpi.avgHeadcount)}<span style="font-size:.9rem;color:var(--text-mute)">명</span></div></div>
-          <div class="card"><div class="label">조단가</div><div class="value">${fmtWon(kpi.avgHeadcost)}</div></div>
-          <div class="card"><div class="label">전년도 조수</div><div class="value">${kpi.lastYearTraffic? fmtNum(kpi.lastYearTraffic.avgHeadcount) : '-'}${kpi.lastYearTraffic?'<span style="font-size:.9rem;color:var(--text-mute)">명</span>':''}</div>${kpi.lastYearTraffic?'':'<div class="sub">전년 파일 필요</div>'}</div>
-          <div class="card"><div class="label">전년도 조단가</div><div class="value">${kpi.lastYearTraffic? fmtWon(kpi.lastYearTraffic.headcost) : '-'}</div>${kpi.lastYearTraffic?'':'<div class="sub">전년 파일 필요</div>'}</div>
+        <div>
+          <div class="subgroup">
+            <div class="subgroup-label">당월</div>
+            <div class="cards" style="grid-template-columns:repeat(2,1fr)">
+              <div class="card"><div class="label">일평균 조수</div><div class="value">${fmtNum(kpi.avgHeadcount)}<span style="font-size:.9rem;color:var(--text-mute)">명</span></div></div>
+              <div class="card"><div class="label">조단가</div><div class="value">${fmtWon(kpi.avgHeadcost)}</div></div>
+            </div>
+          </div>
+          <div class="subgroup">
+            <div class="subgroup-label">전년</div>
+            <div class="cards" style="grid-template-columns:repeat(2,1fr)">
+              <div class="card"><div class="label">조수</div><div class="value">${kpi.lastYearTraffic? fmtNum(kpi.lastYearTraffic.avgHeadcount) : '-'}${kpi.lastYearTraffic?'<span style="font-size:.9rem;color:var(--text-mute)">명</span>':''}</div>${kpi.lastYearTraffic?'':'<div class="sub">전년 파일 필요</div>'}</div>
+              <div class="card"><div class="label">조단가</div><div class="value">${kpi.lastYearTraffic? fmtWon(kpi.lastYearTraffic.headcost) : '-'}</div>${kpi.lastYearTraffic?'':'<div class="sub">전년 파일 필요</div>'}</div>
+            </div>
+          </div>
         </div>
         <div class="chan-grid">
           ${channelCard('POS', kpi.posTotal, channelTotal)}
@@ -1252,17 +1363,25 @@ function render(res){
     `)}
 
     ${block('CALENDAR', '평일 · 주말 일평균', `
-      <div class="dow-grid">
-        ${dowCard('평일 (월~금, 공휴일 제외)', kpi.weekdayStats)}
-        ${dowCard('주말 (토·일 + 공휴일)', kpi.weekendStats)}
-        ${kpi.lastYearTraffic ? dowCard('전년도 평일 (월~금)', kpi.lastYearTraffic.weekdayStats) : dowCardEmpty('전년도 평일 (월~금)')}
-        ${kpi.lastYearTraffic ? dowCard('전년도 주말 (토·일)', kpi.lastYearTraffic.weekendStats) : dowCardEmpty('전년도 주말 (토·일)')}
+      <div class="subgroup">
+        <div class="subgroup-label">당월</div>
+        <div class="dow-grid">
+          ${dowCard('평일 (월~금, 공휴일 제외)', kpi.weekdayStats)}
+          ${dowCard('주말 (토·일 + 공휴일)', kpi.weekendStats)}
+        </div>
+      </div>
+      <div class="subgroup">
+        <div class="subgroup-label">전년</div>
+        <div class="dow-grid">
+          ${kpi.lastYearTraffic ? dowCard('평일 (월~금)', kpi.lastYearTraffic.weekdayStats) : dowCardEmpty('평일 (월~금)')}
+          ${kpi.lastYearTraffic ? dowCard('주말 (토·일)', kpi.lastYearTraffic.weekendStats) : dowCardEmpty('주말 (토·일)')}
+        </div>
       </div>
     `)}
 
     ${block('CATEGORY', '카테고리별 매출 — 대분류', kpi.hasProd ? `
       ${catTable(kpi.midList, kpi.midTotal, false, true)}
-      <p class="note">대분류를 클릭하면 소분류·상품별 상세 내역이 표시됩니다.</p>
+      <p class="note" style="font-size:.95rem;color:var(--info);font-weight:700">💡 대분류를 클릭하면 소분류·상품별 상세 내역이 표시됩니다.</p>
       <div id="midDetailPanel" style="display:none"></div>
     ` : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
     ${block('CATEGORY', '카테고리별 매출 — 소분류', kpi.hasProd ? catTable(kpi.subList, kpi.subTotal, true) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
@@ -1274,8 +1393,9 @@ function render(res){
     ${block('ANNUAL', '연간 월별 실적', `
       <div class="chart-legend">
         <span><i style="background:var(--surface-3);border:1px solid var(--border)"></i>목표</span>
-        <span><i style="background:var(--accent)"></i>실적</span>
-        <span><i style="background:var(--text);border-radius:50%"></i>달성률(선)</span>
+        <span><i style="background:var(--text-mute)"></i>전년 실적</span>
+        <span><i style="background:var(--accent)"></i>26년 실적</span>
+        <span><i style="background:var(--text);border-radius:50%"></i>달성률</span>
       </div>
       <div class="tablewrap" style="padding:16px 20px;margin-bottom:16px">${annualChartSVG(kpi.annual)}</div>
       ${annualTable(kpi)}
@@ -1285,14 +1405,24 @@ function render(res){
 
 function block(eyebrow, title, inner){
   return `<section class="block">
-    <div class="block-head"><span class="eyebrow">${eyebrow}</span><div class="rule"></div></div>
+    <div class="block-head"><div class="rule"></div></div>
     <h2 class="block-title">${title}</h2>
     <div style="margin-top:14px">${inner}</div>
   </section>`;
 }
+function shareCircle(share, size){
+  const px = size || 48;
+  const deg = Math.max(0, Math.min(share, 1)) * 360;
+  return `<div class="gauge" style="width:${px}px;height:${px}px;flex-shrink:0;background:conic-gradient(var(--accent) ${deg}deg, var(--surface-3) ${deg}deg)"><div class="hole" style="inset:6px;font-size:.62rem">${fmtPct(share,0)}</div></div>`;
+}
 function channelCard(label, value, total){
   const share = total>0 ? value/total : 0;
-  return `<div class="card"><div class="label">${label}</div><div class="value" style="font-size:1.25rem">${fmtWon(value)}</div><div class="sub">비중 ${fmtPct(share)}</div>${barCell(value, total)}</div>`;
+  return `<div class="card" style="text-align:center">
+    <div class="label" style="white-space:nowrap">${label}</div>
+    <div class="value" style="font-size:1.3rem;white-space:nowrap">${fmtWon(value)}</div>
+    <div style="display:flex;justify-content:center;margin:14px 0 10px">${shareCircle(share, 56)}</div>
+    <div class="sub" style="margin-top:0;white-space:nowrap">비중 ${fmtPct(share)}</div>
+  </div>`;
 }
 function dowCard(title, stats){
   return `<div class="card"><div class="label">${title}</div><div class="value" style="font-size:1.2rem">${fmtWon(stats.avgNet)}<span style="font-size:.7rem;color:var(--text-mute)"> /일</span></div><div class="sub">일평균 조수 ${fmtNum(stats.avgHeadcount)}명 · 일평균 조단가 ${fmtWon(stats.avgHeadcost)}</div></div>`;
@@ -1302,16 +1432,38 @@ function dowCardEmpty(title){
 }
 function catTable(list, total, isSub, clickable){
   if(!list.length || total===0) return `<div class="empty-hint">데이터가 없습니다. 상품별매출내역조회 파일의 매출일자·중분류·소분류 열 위치를 확인해주세요.</div>`;
+  const hasLY = list.some(x=>x.lyNet!=null);
   const max = list.length ? Math.max(...list.map(x=>x.net)) : 0;
   const rows = list.map(x=>{
     const nameEsc = String(x.name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     const attrs = clickable ? ` class="mid-row" data-cat="${escapeHtml(x.name)}" onclick="showMidDetail('${nameEsc}')"` : '';
-    return `<tr${attrs}><td>${x.name}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.net)}</td><td>${fmtPct(x.share)}</td><td class="bar-cell" style="width:140px">${barCell(x.net, max)}</td></tr>`;
+    const growth = (hasLY && x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null;
+    return `<tr${attrs}>
+      <td>${x.name}</td>
+      <td>${fmtNum(x.qty)}</td>
+      <td>${fmtWon(x.net)}</td>
+      <td>${fmtPct(x.share)}</td>
+      ${hasLY?`<td>${x.lyQty!=null?fmtNum(x.lyQty):'-'}</td>`:''}
+      ${hasLY?`<td>${x.lyNet!=null?fmtWon(x.lyNet):'-'}</td>`:''}
+      ${hasLY?`<td class="${growth===null?'':(growth>=0?'pos':'neg')}">${growth===null?'-':fmtSignedPct(growth)}</td>`:''}
+      ${hasLY?`<td>${x.lyShare!=null?fmtPct(x.lyShare):'-'}</td>`:''}
+      <td class="bar-cell" style="width:140px">${barCell(x.net, max)}</td>
+    </tr>`;
   }).join('');
+  const groupHead = hasLY ? `<tr>
+      <th rowspan="2" style="vertical-align:bottom">${isSub?'소분류':'대분류'}</th>
+      <th colspan="3" class="group-head cur">당월</th>
+      <th colspan="4" class="group-head ly">전년</th>
+      <th rowspan="2"></th>
+    </tr>
+    <tr>
+      <th>수량</th><th>매출(VAT 별도)</th><th>비중</th>
+      <th>수량</th><th>매출(VAT 별도)</th><th>성장률</th><th>비중</th>
+    </tr>` : `<tr><th>${isSub?'소분류':'대분류'}</th><th>수량</th><th>매출(VAT 별도)</th><th>비중</th><th></th></tr>`;
   return `<div class="tablewrap"><table class="dt">
-    <thead><tr><th>${isSub?'소분류':'대분류'}</th><th>수량</th><th>매출(VAT 별도)</th><th>비중</th><th></th></tr></thead>
+    <thead>${groupHead}</thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td>합계</td><td>${fmtNum(list.reduce((s,x)=>s+x.qty,0))}</td><td>${fmtWon(total)}</td><td>100.0%</td><td></td></tr></tfoot>
+    <tfoot><tr><td>합계</td><td>${fmtNum(list.reduce((s,x)=>s+x.qty,0))}</td><td>${fmtWon(total)}</td><td>100.0%</td>${hasLY?'<td></td><td></td><td></td><td></td>':''}<td></td></tr></tfoot>
   </table></div>`;
 }
 function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
@@ -1331,10 +1483,10 @@ function showMidDetail(cat){
   if(rowEl) rowEl.classList.add('active');
   panel.dataset.cat = cat;
   panel.style.display = 'block';
-  const prodList = detail.prods.map(p=>({rank:p.rank, name:p.name, qty:p.qty, net:p.net, share:p.share}));
+  const prodList = detail.prods.map(p=>({rank:p.rank, name:p.name, qty:p.qty, net:p.net, share:p.share, lyQty:p.lyQty, lyNet:p.lyNet, lyShare:p.lyShare}));
   const prodQtySum = detail.prods.reduce((s,p)=>s+p.qty,0);
   panel.innerHTML = `
-    <div class="block-head" style="margin-top:18px"><span class="eyebrow">DETAIL</span><div class="rule"></div></div>
+    <div class="block-head" style="margin-top:18px"><div class="rule"></div></div>
     <h3 style="font-family:'Noto Sans KR';font-weight:800;font-size:1.05rem;margin:0 0 12px">${escapeHtml(cat)} — 소분류 · 상품 상세</h3>
     <div class="two-col">
       <div>${catTable(detail.subs, detail.subTotal, true)}</div>
@@ -1344,12 +1496,38 @@ function showMidDetail(cat){
 }
 function productTable(list, totalQty, totalNet){
   if(!list.length) return `<div class="empty-hint">데이터가 없습니다.</div>`;
+  const hasLY = list.some(x=>x.lyNet!=null);
   const max = Math.max(...list.map(x=>x.net));
-  const rows = list.map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.name}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.net)}</td><td>${fmtPct(x.share)}</td><td class="bar-cell" style="width:120px">${barCell(x.net, max)}</td></tr>`).join('');
+  const rows = list.map(x=>{
+    const growth = (hasLY && x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null;
+    return `<tr>
+      <td><span class="rankbadge">${x.rank}</span></td>
+      <td style="text-align:left">${x.name}</td>
+      <td>${fmtNum(x.qty)}</td>
+      <td>${fmtWon(x.net)}</td>
+      <td>${fmtPct(x.share)}</td>
+      ${hasLY?`<td>${x.lyQty!=null?fmtNum(x.lyQty):'-'}</td>`:''}
+      ${hasLY?`<td>${x.lyNet!=null?fmtWon(x.lyNet):'-'}</td>`:''}
+      ${hasLY?`<td class="${growth===null?'':(growth>=0?'pos':'neg')}">${growth===null?'-':fmtSignedPct(growth)}</td>`:''}
+      ${hasLY?`<td>${x.lyShare!=null?fmtPct(x.lyShare):'-'}</td>`:''}
+      <td class="bar-cell" style="width:120px">${barCell(x.net, max)}</td>
+    </tr>`;
+  }).join('');
+  const groupHead = hasLY ? `<tr>
+      <th rowspan="2" style="vertical-align:bottom">순위</th>
+      <th rowspan="2" style="vertical-align:bottom;text-align:left">상품명</th>
+      <th colspan="3" class="group-head cur">당월</th>
+      <th colspan="4" class="group-head ly">전년</th>
+      <th rowspan="2"></th>
+    </tr>
+    <tr>
+      <th>판매수량</th><th>매출(VAT 별도)</th><th>비중</th>
+      <th>수량</th><th>매출(VAT 별도)</th><th>성장률</th><th>비중</th>
+    </tr>` : `<tr><th>순위</th><th style="text-align:left">상품명</th><th>판매수량</th><th>매출(VAT 별도)</th><th>비중</th><th></th></tr>`;
   return `<div class="tablewrap"><table class="dt">
-    <thead><tr><th>순위</th><th style="text-align:left">상품명</th><th>판매수량</th><th>매출(VAT 별도)</th><th>비중</th><th></th></tr></thead>
+    <thead>${groupHead}</thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td></td><td style="text-align:left">전체 합계</td><td>${fmtNum(totalQty)}</td><td>${fmtWon(totalNet)}</td><td>100.0%</td><td></td></tr></tfoot>
+    <tfoot><tr><td></td><td style="text-align:left">전체 합계</td><td>${fmtNum(totalQty)}</td><td>${fmtWon(totalNet)}</td><td>100.0%</td>${hasLY?'<td></td><td></td><td></td><td></td>':''}<td></td></tr></tfoot>
   </table></div>`;
 }
 function wasteBlock(kpi){
@@ -1369,14 +1547,15 @@ function wasteBlock(kpi){
 function annualTable(kpi){
   const rows = kpi.annual.map(a=>`<tr style="${a.isCurrent?'background:var(--accent-soft)':''}">
       <td style="text-align:left">${a.month}월 ${a.isCurrent?'<span class=\"pill\">전망 반영</span>':''}</td>
-      <td>${fmtWon(a.target)}</td><td>${fmtWon(a.actual)}</td>
+      <td>${fmtWon(a.target)}</td><td>${fmtWon(a.lastYear)}</td><td>${fmtWon(a.actual)}</td>
       <td>${a.achieveRate===null?'-':fmtPct(a.achieveRate)}</td>
-      <td class="${a.mom===null?'':(a.mom>=0?'pos':'neg')}">${a.mom===null?'-':fmtSignedPct(a.mom)}</td>
+      <td class="${a.yoy===null?'':(a.yoy>=0?'pos':'neg')}">${a.yoy===null?'-':fmtSignedPct(a.yoy)}</td>
     </tr>`).join('');
+  const yoySum = kpi.annualLastYearSum>0 ? (kpi.annualActualSum-kpi.annualLastYearSum)/kpi.annualLastYearSum : null;
   return `<div class="tablewrap"><table class="dt">
-    <thead><tr><th style="text-align:left">월</th><th>목표</th><th>실적</th><th>달성률</th><th>전월대비</th></tr></thead>
+    <thead><tr><th style="text-align:left">월</th><th>목표</th><th>전년 실적</th><th>실적</th><th>달성률</th><th>전년대비</th></tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td style="text-align:left">합계 · 월평균</td><td>${fmtWon(kpi.annualTargetSum)}</td><td>${fmtWon(kpi.annualActualSum)}</td><td>${kpi.annualTargetSum>0?fmtPct(kpi.annualActualSum/kpi.annualTargetSum):'-'}</td><td>월평균 ${fmtWon(kpi.annualActualSum/12)}</td></tr></tfoot>
+    <tfoot><tr><td style="text-align:left">합계 · 월평균</td><td>${fmtWon(kpi.annualTargetSum)}</td><td>${fmtWon(kpi.annualLastYearSum)}</td><td>${fmtWon(kpi.annualActualSum)}</td><td>${kpi.annualTargetSum>0?fmtPct(kpi.annualActualSum/kpi.annualTargetSum):'-'}</td><td class="${yoySum===null?'':(yoySum>=0?'pos':'neg')}">${yoySum===null?'월평균 '+fmtWon(kpi.annualActualSum/12):fmtSignedPct(yoySum)}</td></tr></tfoot>
   </table></div>`;
 }
 
