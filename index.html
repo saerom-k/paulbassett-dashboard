@@ -1201,7 +1201,7 @@ async function computeAll(){
     midDetailList[c] = { subs, subTotal: catNet, prods, prodQtyTotal: catQty };
   });
 
-  // ---- 5. product TOP20 ----
+  // ---- 5. product TOP20 (+ 전체 순위) ----
   const prodGroup = {};
   monthProdRows.forEach(r=>{
     const name = str(r[PCOL.name]);
@@ -1212,11 +1212,12 @@ async function computeAll(){
   });
   const prodTotalNet = Object.values(prodGroup).reduce((s,v)=>s+v.net,0);
   const prodTotalQty = Object.values(prodGroup).reduce((s,v)=>s+v.qty,0);
-  const productTop20 = Object.keys(prodGroup).map(k=>({name:k, ...prodGroup[k]}))
-    .sort((a,b)=>b.net-a.net).slice(0,20)
+  const productAll = Object.keys(prodGroup).map(k=>({name:k, ...prodGroup[k]}))
+    .sort((a,b)=>b.net-a.net)
     .map((p,i)=>({rank:i+1, ...p, share: prodTotalNet>0? p.net/prodTotalNet:0}));
+  const productTop20 = productAll.slice(0,20);
 
-  // ---- 6. waste TOP20 ----
+  // ---- 6. waste TOP20 (+ 전체 순위) ----
   const monthWasteRows = wasteRows.filter(r=>{
     const d = normalizeDateStr(r[COL.waste.date]);
     if(!d) return false;
@@ -1241,8 +1242,9 @@ async function computeAll(){
   const wasteTotalAmt = Object.values(wasteGroup).reduce((s,v)=>s+v.amt,0);
   const wasteTotalQty = Object.values(wasteGroup).reduce((s,v)=>s+v.qty,0);
   const wasteRate = cumNet>0 ? wasteTotalAmt/cumNet : 0;
-  const wasteTop20 = Object.values(wasteGroup).sort((a,b)=> b.amt-a.amt || a.firstIdx-b.firstIdx).slice(0,20)
+  const wasteAll = Object.values(wasteGroup).sort((a,b)=> b.amt-a.amt || a.firstIdx-b.firstIdx)
     .map((w,i)=>({ rank:i+1, name:w.name, qty:w.qty, amt:w.amt, unitPrice: w.qty>0? w.amt/w.qty:0, rate: cumNet>0? w.amt/cumNet:0, reason:w.reason, date:w.lastDate }));
+  const wasteTop20 = wasteAll.slice(0,20);
 
   // ---- 7. day-of-week averages & forecast ----
   // 요일별 평균매출(7-1)은 "이미 지난 날짜"만으로 평균을 내야 한다. 아직 오지 않은 날짜를 0으로
@@ -1290,8 +1292,8 @@ async function computeAll(){
     posTotal, kioskTotal, deliveryTotal, avgHeadcount, avgHeadcost,
     weekdayStats, weekendStats, lastYearTraffic,
     midList, midTotal, subList, subTotal, midDetailList,
-    productTop20, prodTotalNet, prodTotalQty,
-    wasteTop20, wasteTotalAmt, wasteTotalQty, wasteRate, hasWaste: !!aoaWaste,
+    productTop20, productAll, prodTotalNet, prodTotalQty,
+    wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, hasWaste: !!aoaWaste,
     hasProd: !!aoaProd, hasProdLY, hasPos: !!aoaPos, hasTarget: !!targetWB,
     hasPrevYear: !!aoaPrev || !!lastYearDailyFromTarget,
     dowStats, forecast, annual, annualTargetSum, annualActualSum, annualLastYearSum
@@ -2062,17 +2064,20 @@ async function buildExcelBlob(kpi){
   const ws2 = wb.addWorksheet('일별입력', { views:[{showGridLines:false}] });
   setColWidths(ws2, false);
   ws2.getColumn(2).width = 12;
-  const dayHeaders = ['일자','요일','순매출','일자별목표','달성률','전년매출','전년비','조수','조단가','POS','KIOSK','배달'];
+  const dayHeaders = ['일자','요일','순매출','일자별목표','달성률','전년매출','전년비','조수','조단가','POS','POS 비중','KIOSK','KIOSK 비중','배달','배달 비중'];
   dayHeaders.forEach((h,i)=>{ const c=ws2.getCell(2,2+i); c.value=h; styleCell(ws2,c,{fill:GRAYHEAD, font:{bold:true,size:10}}); });
   kpi.daily.forEach((d,idx)=>{
     const rr = 3+idx;
-    const vals = [d.dateStr, d.weekdayText || ['월','화','수','목','금','토','일'][d.dow-1], d.net, d.target, d.achieveRate, d.lastYearNet, d.yoyGrowth, d.headcount, d.headcost, d.posNet, d.kioskNet, d.deliveryNet];
-    const fmts = [null,null,'#,##0"원"','#,##0"원"','0.0%','#,##0"원"','+0.0%;-0.0%','#,##0"명"','#,##0"원"','#,##0"원"','#,##0"원"','#,##0"원"'];
+    const dayChannelTotal = d.posNet + d.kioskNet + d.deliveryNet;
+    const posShareDay = dayChannelTotal>0 ? d.posNet/dayChannelTotal : 0;
+    const kioskShareDay = dayChannelTotal>0 ? d.kioskNet/dayChannelTotal : 0;
+    const deliveryShareDay = dayChannelTotal>0 ? d.deliveryNet/dayChannelTotal : 0;
+    const vals = [d.dateStr, d.weekdayText || ['월','화','수','목','금','토','일'][d.dow-1], d.net, d.target, d.achieveRate, d.lastYearNet, d.yoyGrowth, d.headcount, d.headcost, d.posNet, posShareDay, d.kioskNet, kioskShareDay, d.deliveryNet, deliveryShareDay];
+    const fmts = [null,null,'#,##0"원"','#,##0"원"','0.0%','#,##0"원"','+0.0%;-0.0%','#,##0"명"','#,##0"원"','#,##0"원"','0.0%','#,##0"원"','0.0%','#,##0"원"','0.0%'];
     vals.forEach((v,i)=>{
       const c = ws2.getCell(rr, 2+i);
       c.value = (v===null||v===undefined) ? '-' : v;
       let color = null;
-      if(i===4) color = d.target>0 ? achieveColor(v) : null;
       if(i===6) color = riseFallColor(v);
       styleCell(ws2, c, {font:{size:10, color: color?{argb:color}:undefined}, numFmt: v!=='-'?fmts[i]:undefined, align:{horizontal:i<=1?'center':'right'}, border:true});
     });
@@ -2080,7 +2085,10 @@ async function buildExcelBlob(kpi){
 
   /* ---------------- 3. 상품분석 (카테고리 + TOP20) ---------------- */
   const ws3 = wb.addWorksheet('상품분석', { views:[{showGridLines:false}] });
-  setColWidths(ws3, true);
+  ws3.getColumn(1).width = 2.5;
+  ws3.getColumn(2).width = 22;
+  ws3.getColumn(3).width = 30;
+  for(let c=4; c<=9; c++) ws3.getColumn(c).width = 14;
   function sectionHeader3(rr, text){
     ws3.mergeCells(rr,2,rr,9);
     const c = ws3.getCell(rr,2); c.value = text;
@@ -2134,9 +2142,40 @@ async function buildExcelBlob(kpi){
     r3 += 1;
   });
 
+  /* ---------------- 3-1. 상품분석(전체) — 매출액 기준 전체 상품 순위 ---------------- */
+  const ws3b = wb.addWorksheet('상품분석(전체)', { views:[{showGridLines:false}] });
+  ws3b.getColumn(1).width = 2.5;
+  ws3b.getColumn(2).width = 8;
+  ws3b.getColumn(3).width = 34;
+  for(let c=4; c<=6; c++) ws3b.getColumn(c).width = 14;
+  ws3b.mergeCells(2,2,2,6);
+  const ws3bTitle = ws3b.getCell(2,2);
+  ws3bTitle.value = `전체 상품 매출 순위 (매출액 기준, 총 ${kpi.productAll.length}개)`;
+  styleCell(ws3b, ws3bTitle, {fill:NAVY, font:WHITEBOLD, align:{horizontal:'left'}, border:false});
+  ws3b.getRow(2).height = 20;
+  const ws3bHeaders = ['순위','상품명','판매수량','매출(VAT 별도)','비중'];
+  ws3bHeaders.forEach((h,i)=>{ const c = ws3b.getCell(4, 2+i); c.value=h; styleCell(ws3b, c, {fill:GRAYHEAD, font:{bold:true,size:10}}); });
+  kpi.productAll.forEach((x,i)=>{
+    const rr = 5+i;
+    const vals = [x.rank, x.name, x.qty, x.net, x.share];
+    vals.forEach((v,i2)=>{
+      const c = ws3b.getCell(rr, 2+i2);
+      c.value = v;
+      const fmt = [null,null,'#,##0','#,##0"원"','0.0%'][i2];
+      styleCell(ws3b, c, {font:{size:10}, numFmt: fmt, align:{horizontal: i2===1?'left':'center'}});
+    });
+  });
+
   /* ---------------- 4. 폐기현황 ---------------- */
   const ws4 = wb.addWorksheet('폐기현황', { views:[{showGridLines:false}] });
-  setColWidths(ws4, true);
+  ws4.getColumn(1).width = 2.5;
+  ws4.getColumn(2).width = 8;
+  ws4.getColumn(3).width = 30;
+  ws4.getColumn(4).width = 12;
+  ws4.getColumn(5).width = 12;
+  ws4.getColumn(6).width = 18;
+  ws4.getColumn(7).width = 12;
+  ws4.getColumn(8).width = 16;
   ws4.mergeCells(2,2,2,9);
   const wtitle = ws4.getCell(2,2); wtitle.value = '폐기 현황 요약';
   styleCell(ws4, wtitle, {fill:{type:'pattern',pattern:'solid',fgColor:{argb:'FFE4002B'}}, font:WHITEBOLD, align:{horizontal:'left'}, border:false});
@@ -2147,12 +2186,17 @@ async function buildExcelBlob(kpi){
     const vc = ws4.getCell(5, 2+i*2); vc.value = val; ws4.mergeCells(5,2+i*2,5,3+i*2); styleCell(ws4, vc, {fill:CREAM, font:{bold:true,size:14,color:{argb:'FF6B3A2A'}}, numFmt:fmt});
   });
   ws4.getRow(4).height=20; ws4.getRow(5).height=24;
-  if(kpi.hasWaste && kpi.wasteTop20.length){
+  if(kpi.hasWaste && kpi.wasteAll.length){
     let r4 = 8;
+    ws4.mergeCells(r4,2,r4,8);
+    const wListTitle = ws4.getCell(r4,2); wListTitle.value = `폐기 전체 순위 (폐기금액 기준, 총 ${kpi.wasteAll.length}개)`;
+    styleCell(ws4, wListTitle, {fill:NAVY, font:WHITEBOLD, align:{horizontal:'left'}, border:false});
+    ws4.getRow(r4).height = 20;
+    r4 += 1;
     const wHeaders = ['순위','상품명','폐기수량','단가','폐기금액(VAT 별도)','폐기율','폐기사유'];
     wHeaders.forEach((h,i)=>{ const c=ws4.getCell(r4,2+i); c.value=h; styleCell(ws4,c,{fill:GRAYHEAD, font:{bold:true,size:10}}); });
     r4+=1;
-    kpi.wasteTop20.forEach(x=>{
+    kpi.wasteAll.forEach(x=>{
       const vals = [x.rank, x.name, x.qty, x.unitPrice, x.amt, x.rate, x.reason];
       vals.forEach((v,i)=>{
         const c = ws4.getCell(r4, 2+i);
