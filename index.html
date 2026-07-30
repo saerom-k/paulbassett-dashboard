@@ -95,7 +95,13 @@
   .drop .idx{ font-family:'Noto Sans KR', sans-serif; font-size:.72rem; color: var(--accent); letter-spacing:.06em; font-weight:700; }
   .drop .name{ font-weight:700; font-size:.92rem; margin:5px 0 4px; color: var(--text); padding-right:34px; white-space:nowrap; overflow:hidden; text-overflow:clip; }
   .drop .desc{ font-size:.78rem; color: var(--text-mute); line-height:1.45; }
-  .drop .status{ margin-top:10px; font-size:.78rem; color: var(--positive); font-family:'Noto Sans KR', sans-serif; word-break:break-all; font-weight:600; }
+  .drop .status{ margin-top:10px; font-size:.78rem; color: var(--positive); font-family:'Noto Sans KR', sans-serif; font-weight:600; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .drop .status span{ word-break:break-all; }
+  .file-remove-btn{
+    flex-shrink:0; background:#fff; border:1px solid var(--negative); color:var(--negative); font-size:.68rem;
+    font-weight:700; padding:3px 8px; border-radius:20px; cursor:pointer; font-family:'Noto Sans KR', sans-serif;
+  }
+  .file-remove-btn:hover{ background:var(--negative); color:#fff; }
   .drop input[type=file]{ display:none; }
 
   .store-box{
@@ -326,8 +332,8 @@
       <span class="store-tag manual" id="storeTag">선택 대기</span>
     </div>
 
-    <button class="adv-toggle" id="advToggle">⚙ 고급 설정 — 매장명 표시 · 중분류 매핑 · 폐기 보정단가</button>
-    <div class="adv-panel" id="advPanel">
+    <button class="adv-toggle" id="advToggle" style="display:none">⚙ 고급 설정 — 매장명 표시 · 중분류 매핑 · 폐기 보정단가</button>
+    <div class="adv-panel" id="advPanel" style="display:none !important">
       <div class="adv-field">
         <label>매장명 (헤더에 표시 — 자동 매칭 시 자동 입력됨)</label>
         <input type="text" id="storeNameInput" placeholder="예: 폴 바셋 OO점">
@@ -436,11 +442,39 @@ document.querySelectorAll('.drop').forEach(dropEl=>{
 function handleFileForSlot(slot, f, dropEl){
   files[slot] = f;
   const statusEl = dropEl.querySelector('.status');
-  statusEl.textContent = '✓ ' + f.name;
+  statusEl.innerHTML = '';
+  const nameSpan = document.createElement('span');
+  nameSpan.textContent = '✓ ' + f.name;
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'file-remove-btn';
+  removeBtn.textContent = '✕ 제거';
+  removeBtn.onclick = (ev)=>{ ev.preventDefault(); ev.stopPropagation(); removeFileForSlot(slot, dropEl); };
+  statusEl.appendChild(nameSpan);
+  statusEl.appendChild(removeBtn);
   dropEl.classList.add('filled');
   checkReady();
   if(slot === 'target') loadTargetWorkbookForMatching(f);
   if(slot === 'pos') loadPosStoreCandidate(f);
+}
+function removeFileForSlot(slot, dropEl){
+  files[slot] = null;
+  const statusEl = dropEl.querySelector('.status');
+  statusEl.innerHTML = '';
+  dropEl.classList.remove('filled');
+  const inp = dropEl.querySelector('input[type=file]');
+  if(inp) inp.value = '';
+  if(slot === 'target'){
+    targetWBCache = null;
+    storeListCache = [];
+    const select = document.getElementById('storeSelect');
+    if(select) select.innerHTML = '<option value="">목표매출 파일을 업로드하면 매장 목록이 표시됩니다</option>';
+    document.getElementById('storeBox').classList.remove('show');
+  }
+  if(slot === 'pos'){
+    posStoreCandidate = null;
+  }
+  checkReady();
 }
 function checkReady(){
   const storeOk = files.target ? !!document.getElementById('storeSelect').value : true;
@@ -1657,12 +1691,17 @@ function annualTable(kpi){
       <td>${a.achieveRate===null?'-':fmtPct(a.achieveRate)}</td>
       <td class="${a.yoy===null?'':(a.yoy>=0?'pos':'neg')}">${a.yoy===null?'-':fmtSignedPct(a.yoy)}</td>
     </tr>`).join('');
-  const yoySum = kpi.annualLastYearSum>0 ? (kpi.annualActualSum-kpi.annualLastYearSum)/kpi.annualLastYearSum : null;
-  const achieveSum = kpi.annualTargetSum>0 ? kpi.annualActualSum/kpi.annualTargetSum : null;
+  // 월평균 달성률/전년대비는 실제 26년 실적(또는 당월 예상치)이 입력된 달만 반영합니다.
+  const dataMonths = kpi.annual.filter(a=>a.actual>0);
+  const dataTargetSum = dataMonths.reduce((s,a)=>s+a.target,0);
+  const dataActualSum = dataMonths.reduce((s,a)=>s+a.actual,0);
+  const dataLastYearSum = dataMonths.reduce((s,a)=>s+a.lastYear,0);
+  const yoySum = dataLastYearSum>0 ? (dataActualSum-dataLastYearSum)/dataLastYearSum : null;
+  const achieveSum = dataTargetSum>0 ? dataActualSum/dataTargetSum : null;
   return `<div class="tablewrap"><table class="dt">
     <thead><tr><th style="text-align:left">월</th><th>목표</th><th>전년 실적</th><th>${kpi.YEAR}년 실적</th><th>달성률</th><th>전년대비</th></tr></thead>
     <tbody>${rows}</tbody>
-    <tfoot><tr><td style="text-align:left">합계 · 월평균</td><td>${fmtWon(kpi.annualTargetSum)}</td><td>${fmtWon(kpi.annualLastYearSum)}</td><td>${fmtWon(kpi.annualActualSum)}</td><td class="${achieveSum===null?'':(achieveSum>=1?'pos':'neg')}">${achieveSum===null?'-':fmtPct(achieveSum)}</td><td class="${yoySum===null?'':(yoySum>=0?'pos':'neg')}">${yoySum===null?'월평균 '+fmtWon(kpi.annualActualSum/12):fmtSignedPct(yoySum)}</td></tr></tfoot>
+    <tfoot><tr><td style="text-align:left">합계 · 월평균(${dataMonths.length}개월 반영)</td><td>${fmtWon(dataTargetSum)}</td><td>${fmtWon(dataLastYearSum)}</td><td>${fmtWon(dataActualSum)}</td><td class="${achieveSum===null?'':(achieveSum>=1?'pos':'neg')}">${achieveSum===null?'-':fmtPct(achieveSum)}</td><td class="${yoySum===null?'':(yoySum>=0?'pos':'neg')}">${yoySum===null?'-':fmtSignedPct(yoySum)}</td></tr></tfoot>
   </table></div>`;
 }
 
@@ -1777,7 +1816,18 @@ async function restoreFilesFromRecord(record){
     if(!dropEl) continue;
     dropEl.classList.add('filled');
     const statusEl = dropEl.querySelector('.status');
-    if(statusEl) statusEl.textContent = '✓ ' + f.name;
+    if(statusEl){
+      statusEl.innerHTML = '';
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = '✓ ' + f.name;
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'file-remove-btn';
+      removeBtn.textContent = '✕ 제거';
+      removeBtn.onclick = (ev)=>{ ev.preventDefault(); ev.stopPropagation(); removeFileForSlot(slot, dropEl); };
+      statusEl.appendChild(nameSpan);
+      statusEl.appendChild(removeBtn);
+    }
     try{
       const inp = dropEl.querySelector('input[type=file]');
       const dt = new DataTransfer();
@@ -1995,20 +2045,12 @@ async function buildExcelBlob(kpi){
   kpiBlock(4, 8, 2, '누계 달성률', cumAchieve, '0.0%', achieveColor(cumAchieve));
   kpiBlock(4, 10, 2, '전년 동기 매출', kpi.cumLastYear, '#,##0"원"');
   kpiBlock(4, 12, 2, '전년비 성장률', cumGrowth===null?'-':cumGrowth, cumGrowth===null?undefined:'+0.0%;-0.0%', riseFallColor(cumGrowth));
-  kpiBlock(4, 14, 2, '일평균 조수', kpi.avgHeadcount, '#,##0"명"');
-  kpiBlock(4, 16, 2, '조단가', kpi.avgHeadcost, '#,##0"원"');
 
   kpiBlock(7, 2, 3, '당월 예상 실적(1일~말일)', kpi.forecast, '#,##0"원"');
   kpiBlock(7, 5, 3, '당월 목표', kpi.monthTargetTotal, '#,##0"원"');
   kpiBlock(7, 8, 2, '목표 달성률', monthAchieve, '0.0%', achieveColor(monthAchieve));
   kpiBlock(7, 10, 2, '전년 동월 매출', kpi.lastYearMonthTotal, '#,##0"원"');
   kpiBlock(7, 12, 2, '전년비 성장률', forecastGrowth===null?'-':forecastGrowth, forecastGrowth===null?undefined:'+0.0%;-0.0%', riseFallColor(forecastGrowth));
-  if(kpi.lastYearTraffic){
-    kpiBlock(7, 14, 2, '전년도 조수', kpi.lastYearTraffic.avgHeadcount, '#,##0"명"');
-    kpiBlock(7, 16, 2, '전년도 조단가', kpi.lastYearTraffic.headcost, '#,##0"원"');
-    kpiBlock(7, 18, 2, '조수 전년비', hcDiff, '+#,##0"명";-#,##0"명"', riseFallColor(hcDiff));
-    kpiBlock(7, 20, 2, '조단가 전년비', costDiff, '+#,##0"원";-#,##0"원"', riseFallColor(costDiff));
-  }
 
   const channelTotal = kpi.posTotal + kpi.kioskTotal + kpi.deliveryTotal;
   const posShare = channelTotal>0? kpi.posTotal/channelTotal:0;
@@ -2021,8 +2063,13 @@ async function buildExcelBlob(kpi){
   kpiBlock(10, 6, 2, '배달 매출', kpi.deliveryTotal, '#,##0"원"');
   merge1(12,6,12,7); const dlvP = ws1.getCell(12,6); dlvP.value = deliveryShare; styleCell(ws1, dlvP, {font:{size:10,color:{argb:'FF6B3A2A'}}, numFmt:'"비중 "0.0%', fill:CREAM, border:false});
   ws1.getRow(12).height = 16;
+
+  const weekdayGrowth = (kpi.lastYearTraffic && kpi.lastYearTraffic.weekdayStats.avgNet>0) ? (kpi.weekdayStats.avgNet - kpi.lastYearTraffic.weekdayStats.avgNet)/kpi.lastYearTraffic.weekdayStats.avgNet : null;
+  const weekendGrowth = (kpi.lastYearTraffic && kpi.lastYearTraffic.weekendStats.avgNet>0) ? (kpi.weekendStats.avgNet - kpi.lastYearTraffic.weekendStats.avgNet)/kpi.lastYearTraffic.weekendStats.avgNet : null;
   kpiBlock(10, 8, 2, '평일 일평균', kpi.weekdayStats.avgNet, '#,##0"원"');
+  merge1(12,8,12,9); const wdG = ws1.getCell(12,8); wdG.value = weekdayGrowth===null?'-':weekdayGrowth; styleCell(ws1, wdG, {font:{size:10,color: weekdayGrowth===null?{argb:'FF6B3A2A'}:{argb:riseFallColor(weekdayGrowth)}}, numFmt: weekdayGrowth===null?undefined:'"전년비 "+0.0%;"전년비 "-0.0%', fill:CREAM, border:false, align:{horizontal:'center'}});
   kpiBlock(10, 10, 2, '주말 일평균', kpi.weekendStats.avgNet, '#,##0"원"');
+  merge1(12,10,12,11); const weG = ws1.getCell(12,10); weG.value = weekendGrowth===null?'-':weekendGrowth; styleCell(ws1, weG, {font:{size:10,color: weekendGrowth===null?{argb:'FF6B3A2A'}:{argb:riseFallColor(weekendGrowth)}}, numFmt: weekendGrowth===null?undefined:'"전년비 "+0.0%;"전년비 "-0.0%', fill:CREAM, border:false, align:{horizontal:'center'}});
 
   function sectionHeader1(rr, text, color){
     merge1(rr,2,rr,21);
@@ -2037,19 +2084,37 @@ async function buildExcelBlob(kpi){
     });
   }
 
-  let r = 15;
+  /* ---- 조수 · 조단가 (당월/전년/전년비를 한 구역에 모아서 표시) ---- */
+  sectionHeader1(14, '조수 · 조단가');
+  kpiBlock(15, 2, 2, '당월 조수', kpi.avgHeadcount, '#,##0"명"');
+  kpiBlock(15, 4, 2, '당월 조단가', kpi.avgHeadcost, '#,##0"원"');
+  if(kpi.lastYearTraffic){
+    kpiBlock(15, 6, 2, '전년도 조수', kpi.lastYearTraffic.avgHeadcount, '#,##0"명"');
+    kpiBlock(15, 8, 2, '전년도 조단가', kpi.lastYearTraffic.headcost, '#,##0"원"');
+    kpiBlock(15, 10, 2, '조수 전년비', hcDiff, '+#,##0"명";-#,##0"명"', riseFallColor(hcDiff));
+    kpiBlock(15, 12, 2, '조단가 전년비', costDiff, '+#,##0"원";-#,##0"원"', riseFallColor(costDiff));
+  }
+
+  let r = 19;
   sectionHeader1(r, `${kpi.YEAR}년 월별 실적`);
   r += 1;
-  tableHeaderRow1(r, ['구분', ...Array.from({length:12},(_,i)=>`${i+1}월`)], 2);
+  tableHeaderRow1(r, ['구분', ...Array.from({length:12},(_,i)=>`${i+1}월`), `${kpi.YEAR}년 합계`], 2);
   r += 1;
+  // 월평균 달성률/전년대비 합계는 실제 26년 실적(또는 당월 예상치)이 입력된 달만 반영합니다.
+  const dataMonths = kpi.annual.filter(a=>a.actual>0);
+  const dataTargetSum = dataMonths.reduce((s,a)=>s+a.target,0);
+  const dataActualSum = dataMonths.reduce((s,a)=>s+a.actual,0);
+  const dataLastYearSum = dataMonths.reduce((s,a)=>s+a.lastYear,0);
+  const sumAchieve = dataTargetSum>0 ? dataActualSum/dataTargetSum : null;
+  const sumYoy = dataLastYearSum>0 ? (dataActualSum-dataLastYearSum)/dataLastYearSum : null;
   const rowsDef = [
-    ['목표 매출', kpi.annual.map(a=>a.target), '#,##0"원"', null],
-    ['전년 실적', kpi.annual.map(a=>a.lastYear), '#,##0"원"', null],
-    [`${kpi.YEAR}년 실적`, kpi.annual.map(a=>a.actual), '#,##0"원"', null],
-    ['달성률', kpi.annual.map(a=>a.achieveRate), '0.0%', 'achieve'],
-    ['전년대비', kpi.annual.map(a=>a.yoy), '+0.0%;-0.0%', 'growth'],
+    ['목표 매출', kpi.annual.map(a=>a.target), '#,##0"원"', null, dataTargetSum],
+    ['전년 실적', kpi.annual.map(a=>a.lastYear), '#,##0"원"', null, dataLastYearSum],
+    [`${kpi.YEAR}년 실적`, kpi.annual.map(a=>a.actual), '#,##0"원"', null, dataActualSum],
+    ['달성률', kpi.annual.map(a=>a.achieveRate), '0.0%', 'achieve', sumAchieve],
+    ['전년대비', kpi.annual.map(a=>a.yoy), '+0.0%;-0.0%', 'growth', sumYoy],
   ];
-  rowsDef.forEach(([label, arr, fmt, colorMode])=>{
+  rowsDef.forEach(([label, arr, fmt, colorMode, sumVal])=>{
     const lc = ws1.getCell(r,2); lc.value = label; styleCell(ws1, lc, {font:{bold:true,size:10}, align:{horizontal:'left'}});
     arr.forEach((v,i)=>{
       const c = ws1.getCell(r, 3+i);
@@ -2057,6 +2122,10 @@ async function buildExcelBlob(kpi){
       const color = colorMode==='achieve' ? achieveColor(v) : (colorMode==='growth' ? riseFallColor(v) : null);
       styleCell(ws1, c, {font:{size:10, color: color?{argb:color}:undefined}, numFmt: v!=='-' ? fmt : undefined});
     });
+    const sc = ws1.getCell(r, 15);
+    sc.value = (sumVal===null||sumVal===undefined)?'-':sumVal;
+    const sumColor = colorMode==='achieve' ? achieveColor(sumVal) : (colorMode==='growth' ? riseFallColor(sumVal) : null);
+    styleCell(ws1, sc, {font:{bold:true, size:10, color: sumColor?{argb:sumColor}:undefined}, fill:GRAYHEAD, numFmt: sumVal!=='-' ? fmt : undefined});
     r += 1;
   });
 
@@ -2082,6 +2151,20 @@ async function buildExcelBlob(kpi){
       styleCell(ws2, c, {font:{size:10, color: color?{argb:color}:undefined}, numFmt: v!=='-'?fmts[i]:undefined, align:{horizontal:i<=1?'center':'right'}, border:true});
     });
   });
+  {
+    const rrTotal = 3 + kpi.daily.length;
+    const totalAchieve = kpi.cumTarget>0 ? kpi.cumNet/kpi.cumTarget : null;
+    const totalYoy = kpi.cumLastYear>0 ? (kpi.cumNet-kpi.cumLastYear)/kpi.cumLastYear : null;
+    const totalVals = ['합계', '', kpi.cumNet, kpi.cumTarget, totalAchieve, kpi.cumLastYear, totalYoy, kpi.avgHeadcount, kpi.avgHeadcost, kpi.posTotal, posShare, kpi.kioskTotal, kioskShare, kpi.deliveryTotal, deliveryShare];
+    const totalFmts = [null,null,'#,##0"원"','#,##0"원"','0.0%','#,##0"원"','+0.0%;-0.0%','#,##0"명"','#,##0"원"','#,##0"원"','0.0%','#,##0"원"','0.0%','#,##0"원"','0.0%'];
+    totalVals.forEach((v,i)=>{
+      const c = ws2.getCell(rrTotal, 2+i);
+      c.value = (v===null||v===undefined||v==='') ? (i===1?'':'-') : v;
+      let color = null;
+      if(i===6) color = riseFallColor(v);
+      styleCell(ws2, c, {fill:GRAYHEAD, font:{bold:true, size:10, color: color?{argb:color}:undefined}, numFmt: (v!=='-'&&v!=='')?totalFmts[i]:undefined, align:{horizontal:i<=1?'center':'right'}, border:true});
+    });
+  }
 
   /* ---------------- 3. 상품분석 (카테고리 + TOP20) ---------------- */
   const ws3 = wb.addWorksheet('상품분석', { views:[{showGridLines:false}] });
@@ -2113,6 +2196,22 @@ async function buildExcelBlob(kpi){
     });
     r3 += 1;
   });
+  {
+    const midQtySum = kpi.midList.reduce((s,x)=>s+x.qty,0);
+    const midLyQtySum = kpi.midList.reduce((s,x)=>s+(x.lyQty||0),0);
+    const midLyNetSum = kpi.midList.reduce((s,x)=>s+(x.lyNet||0),0);
+    const midGrowthSum = midLyNetSum>0 ? (kpi.midTotal-midLyNetSum)/midLyNetSum : null;
+    const hasLY = kpi.midList.some(x=>x.lyNet!=null);
+    const vals = ['합계', midQtySum, kpi.midTotal, 1, hasLY?midLyQtySum:'-', hasLY?midLyNetSum:'-', hasLY?midGrowthSum:'-', hasLY?1:'-'];
+    vals.forEach((v,i)=>{
+      const c = ws3.getCell(r3, 2+i);
+      c.value = (v===null||v===undefined) ? '-' : v;
+      const fmt = [null,'#,##0','#,##0"원"','0.0%','#,##0','#,##0"원"','+0.0%;-0.0%','0.0%'][i];
+      const color = (i===6 && v!=='-') ? riseFallColor(v) : null;
+      styleCell(ws3, c, {fill:GRAYHEAD, font:{bold:true, size:10, color: color?{argb:color}:undefined}, numFmt: (v!=='-' && fmt) ? fmt : undefined, align:{horizontal: i===0?'left':'center'}});
+    });
+    r3 += 1;
+  }
   r3 += 1;
   sectionHeader3(r3, '카테고리별 매출 — 소분류 (당월 / 전년 비교)'); r3+=1;
   tableHeaderRow3(r3, ['소분류','수량','매출(VAT 별도)','비중','전년수량','전년매출','성장률','전년비중'], 2); r3+=1;
@@ -2128,6 +2227,22 @@ async function buildExcelBlob(kpi){
     });
     r3 += 1;
   });
+  {
+    const subQtySum = kpi.subList.reduce((s,x)=>s+x.qty,0);
+    const subLyQtySum = kpi.subList.reduce((s,x)=>s+(x.lyQty||0),0);
+    const subLyNetSum = kpi.subList.reduce((s,x)=>s+(x.lyNet||0),0);
+    const subGrowthSum = subLyNetSum>0 ? (kpi.subTotal-subLyNetSum)/subLyNetSum : null;
+    const hasLY = kpi.subList.some(x=>x.lyNet!=null);
+    const vals = ['합계', subQtySum, kpi.subTotal, 1, hasLY?subLyQtySum:'-', hasLY?subLyNetSum:'-', hasLY?subGrowthSum:'-', hasLY?1:'-'];
+    vals.forEach((v,i)=>{
+      const c = ws3.getCell(r3, 2+i);
+      c.value = (v===null||v===undefined) ? '-' : v;
+      const fmt = [null,'#,##0','#,##0"원"','0.0%','#,##0','#,##0"원"','+0.0%;-0.0%','0.0%'][i];
+      const color = (i===6 && v!=='-') ? riseFallColor(v) : null;
+      styleCell(ws3, c, {fill:GRAYHEAD, font:{bold:true, size:10, color: color?{argb:color}:undefined}, numFmt: (v!=='-' && fmt) ? fmt : undefined, align:{horizontal: i===0?'left':'center'}});
+    });
+    r3 += 1;
+  }
   r3 += 1;
   sectionHeader3(r3, '판매 상위 TOP 20'); r3+=1;
   tableHeaderRow3(r3, ['순위','상품명','판매수량','매출(VAT 별도)','비중'], 2); r3+=1;
@@ -2141,6 +2256,19 @@ async function buildExcelBlob(kpi){
     });
     r3 += 1;
   });
+  {
+    const top20QtySum = kpi.productTop20.reduce((s,x)=>s+x.qty,0);
+    const top20NetSum = kpi.productTop20.reduce((s,x)=>s+x.net,0);
+    const top20Share = kpi.prodTotalNet>0 ? top20NetSum/kpi.prodTotalNet : 0;
+    const vals = ['', 'TOP 20 합계', top20QtySum, top20NetSum, top20Share];
+    vals.forEach((v,i)=>{
+      const c = ws3.getCell(r3, 2+i);
+      c.value = v;
+      const fmt = [null,null,'#,##0','#,##0"원"','0.0%'][i];
+      styleCell(ws3, c, {fill:GRAYHEAD, font:{bold:true,size:10}, numFmt: fmt, align:{horizontal: i===1?'left':'center'}});
+    });
+    r3 += 1;
+  }
 
   /* ---------------- 3-1. 상품분석(전체) — 매출액 기준 전체 상품 순위 ---------------- */
   const ws3b = wb.addWorksheet('상품분석(전체)', { views:[{showGridLines:false}] });
@@ -2165,6 +2293,16 @@ async function buildExcelBlob(kpi){
       styleCell(ws3b, c, {font:{size:10}, numFmt: fmt, align:{horizontal: i2===1?'left':'center'}});
     });
   });
+  {
+    const rrTotal = 5 + kpi.productAll.length;
+    const totalVals = ['', '합계', kpi.prodTotalQty, kpi.prodTotalNet, kpi.prodTotalNet>0?1:0];
+    totalVals.forEach((v,i2)=>{
+      const c = ws3b.getCell(rrTotal, 2+i2);
+      c.value = v;
+      const fmt = [null,null,'#,##0','#,##0"원"','0.0%'][i2];
+      styleCell(ws3b, c, {fill:GRAYHEAD, font:{bold:true,size:10}, numFmt: fmt, align:{horizontal: i2===1?'left':'center'}});
+    });
+  }
 
   /* ---------------- 4. 폐기현황 ---------------- */
   const ws4 = wb.addWorksheet('폐기현황', { views:[{showGridLines:false}] });
@@ -2205,6 +2343,13 @@ async function buildExcelBlob(kpi){
         styleCell(ws4, c, {font:{size:10}, numFmt: fmt, align:{horizontal: i===1?'left':'center'}});
       });
       r4 += 1;
+    });
+    const totalVals = ['', '합계', kpi.wasteTotalQty, '', kpi.wasteTotalAmt, kpi.wasteRate, ''];
+    totalVals.forEach((v,i)=>{
+      const c = ws4.getCell(r4, 2+i);
+      c.value = v;
+      const fmt = [null,null,'#,##0','#,##0"원"','#,##0"원"','0.00%',null][i];
+      styleCell(ws4, c, {fill:GRAYHEAD, font:{bold:true,size:10}, numFmt: (v!=='')?fmt:undefined, align:{horizontal: i===1?'left':'center'}});
     });
   } else {
     ws4.mergeCells(8,2,8,9); ws4.getCell(8,2).value = '폐기 데이터 없음'; styleCell(ws4, ws4.getCell(8,2), {font:{size:10, italic:true}});
