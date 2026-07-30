@@ -28,6 +28,7 @@
     --positive: #0E9F5A;
     --negative: #E4002B;
     --info: #1E3A8A;
+    --rise: #1656D1;
     --info-soft: #EDF1FB;
     --shadow: 0 1px 2px rgba(20,20,25,.04), 0 6px 20px rgba(20,20,25,.05);
     --divider: repeating-linear-gradient(90deg, var(--border) 0, var(--border) 6px, transparent 6px, transparent 12px);
@@ -119,6 +120,12 @@
   .saved-actions{ display:flex; gap:8px; flex-shrink:0; }
   .btn.ghost.danger{ color:var(--negative); border-color:var(--negative); }
   .btn.ghost.danger:hover{ background:var(--negative); color:#fff; }
+  .btn.save{ background:var(--accent-soft); border:1.5px solid var(--accent); color:var(--accent); box-shadow:none; }
+  .btn.save:hover{ background:var(--accent); color:#fff; }
+  body.pdf-export-mode .topbar .actions{ display:none !important; }
+  body.pdf-export-mode .tablewrap{ overflow:visible !important; }
+  body.pdf-export-mode .two-col{ grid-template-columns:1fr !important; }
+  body.pdf-export-mode #dashScreen{ max-width:none !important; }
   .store-tag.manual{ background: var(--surface-3); color: var(--text-mute); }
 
   .adv-toggle{
@@ -179,7 +186,9 @@
   .card .label{ font-size:.76rem; color: var(--text-mute); letter-spacing:.02em; margin-bottom:8px; font-weight:600; }
   .card .value{ font-family:'Noto Sans KR',sans-serif; font-size:1.65rem; font-weight:800; color:var(--text); line-height:1.15; }
   .card .sub{ margin-top:8px; font-size:.8rem; color: var(--text-dim); }
-  .card .sub .pos{ color: var(--positive); font-weight:700; }
+  .pos{ color: var(--rise); font-weight:700; }
+  .neg{ color: var(--negative); font-weight:700; }
+  .card .sub .pos{ color: var(--rise); font-weight:700; }
   .card .sub .neg{ color: var(--negative); font-weight:700; }
 
   .gauge-card{ display:flex; align-items:center; gap:16px; }
@@ -1254,11 +1263,29 @@ async function computeAll(){
    ============================================================ */
 let CURRENT_KPI = null;
 
+function donutSVG(pct, colorHex, size, label){
+  const px = size || 64;
+  const stroke = Math.max(5, Math.round(px*0.14));
+  const r = (px - stroke)/2;
+  const c = 2*Math.PI*r;
+  const clamped = Math.max(0, Math.min(pct, 1));
+  const dash = (c*clamped).toFixed(1);
+  const gap = (c-c*clamped).toFixed(1);
+  const fontSize = Math.max(9, Math.round(px*0.22));
+  return `<div style="position:relative;width:${px}px;height:${px}px;flex-shrink:0">
+    <svg width="${px}" height="${px}" viewBox="0 0 ${px} ${px}">
+      <circle cx="${px/2}" cy="${px/2}" r="${r}" fill="none" stroke="#F2F2F3" stroke-width="${stroke}"/>
+      <circle cx="${px/2}" cy="${px/2}" r="${r}" fill="none" stroke="${colorHex}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${dash} ${gap}" transform="rotate(-90 ${px/2} ${px/2})"/>
+    </svg>
+    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Noto Sans KR',sans-serif;font-weight:800;font-size:${fontSize}px;color:#17171A">${label}</div>
+  </div>`;
+}
 function gaugeSVG(rate){
-  const pct = Math.max(0, Math.min(rate, 1.5));
-  const deg = Math.min(pct, 1) * 360;
-  const color = rate>=1 ? 'var(--positive)' : 'var(--accent)';
-  return `<div class="gauge" style="background:conic-gradient(${color} ${deg}deg, var(--surface-3) ${deg}deg)"><div class="hole">${fmtPct(rate,0)}</div></div>`;
+  const color = rate>=1 ? '#0E9F5A' : '#E4002B';
+  return donutSVG(Math.min(rate,1), color, 64, fmtPct(rate,0));
+}
+function shareCircle(share, size){
+  return donutSVG(share, '#E4002B', size||48, fmtPct(share,0));
 }
 function barCell(value, max){
   const pct = max>0 ? Math.min(100, (value/max)*100) : 0;
@@ -1326,7 +1353,7 @@ function render(res){
         </div>
       </div>
       <div class="actions">
-        <button class="btn ghost small" onclick="saveDashboardPrompt()">💾 저장</button>
+        <button class="btn save small" onclick="saveDashboardPrompt()">💾 대시보드 저장(Local)</button>
         <button class="btn ghost small" onclick="exportHTML()">HTML</button>
         <button class="btn ghost small" onclick="exportExcel(event)">Excel</button>
         <button class="btn ghost small" onclick="exportPDF(event)">PDF</button>
@@ -1430,18 +1457,15 @@ function block(eyebrow, title, inner){
     <div style="margin-top:14px">${inner}</div>
   </section>`;
 }
-function shareCircle(share, size){
-  const px = size || 48;
-  const deg = Math.max(0, Math.min(share, 1)) * 360;
-  return `<div class="gauge" style="width:${px}px;height:${px}px;flex-shrink:0;background:conic-gradient(var(--accent) ${deg}deg, var(--surface-3) ${deg}deg)"><div class="hole" style="inset:6px;font-size:.62rem">${fmtPct(share,0)}</div></div>`;
-}
 function channelCard(label, value, total){
   const share = total>0 ? value/total : 0;
-  return `<div class="card" style="text-align:center">
-    <div class="label" style="white-space:nowrap">${label}</div>
-    <div class="value" style="font-size:1.3rem;white-space:nowrap">${fmtWon(value)}</div>
-    <div style="display:flex;justify-content:center;margin:14px 0 10px">${shareCircle(share, 56)}</div>
-    <div class="sub" style="margin-top:0;white-space:nowrap">비중 ${fmtPct(share)}</div>
+  return `<div class="card" style="text-align:center;height:100%;display:flex;flex-direction:column;justify-content:space-between;min-height:210px">
+    <div>
+      <div class="label" style="white-space:nowrap">${label}</div>
+      <div class="value" style="font-size:1.35rem;white-space:nowrap;margin-top:4px">${fmtWon(value)}</div>
+    </div>
+    <div style="display:flex;justify-content:center;margin:10px 0">${shareCircle(share, 64)}</div>
+    <div class="sub" style="margin-top:0;white-space:nowrap;font-size:.88rem;font-weight:700">비중 ${fmtPct(share)}</div>
   </div>`;
 }
 function dowCard(title, stats){
@@ -1703,31 +1727,29 @@ async function exportPDF(evt){
   const btn = evt && evt.target;
   const prevText = btn ? btn.textContent : null;
   if(btn){ btn.disabled = true; btn.textContent = 'PDF 생성 중...'; }
+  document.body.classList.add('pdf-export-mode');
+  await new Promise(r=>setTimeout(r, 60)); // 레이아웃 재계산 대기
   try{
     const target = document.getElementById('dashScreen');
-    const canvas = await html2canvas(target, {scale:2, backgroundColor:'#ffffff', useCORS:true, windowWidth: target.scrollWidth});
+    const canvas = await html2canvas(target, {
+      scale:2, backgroundColor:'#ffffff', useCORS:true,
+      windowWidth: target.scrollWidth, width: target.scrollWidth,
+      windowHeight: target.scrollHeight, height: target.scrollHeight
+    });
     const imgData = canvas.toDataURL('image/png');
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF('p','pt','a4');
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = pageWidth;
-    const imgHeight = canvas.height * imgWidth / canvas.width;
-    let heightLeft = imgHeight;
-    let position = 0;
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
-    while(heightLeft > 0){
-      position = heightLeft - imgHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-    }
+    // 표/그래프가 페이지 경계에서 잘리지 않도록, 여러 페이지로 나누지 않고
+    // 콘텐츠 전체 비율에 맞춘 '한 장짜리' 세로로 긴 페이지로 저장합니다.
+    const ptWidth = 800; // 출력 기준 폭(pt)
+    const ptHeight = canvas.height * ptWidth / canvas.width;
+    const pdf = new jsPDF({ orientation:'p', unit:'pt', format:[ptWidth, ptHeight] });
+    pdf.addImage(imgData, 'PNG', 0, 0, ptWidth, ptHeight);
     pdf.save(name.toLowerCase().endsWith('.pdf') ? name : name + '.pdf');
   }catch(err){
     console.error(err);
     alert('PDF 저장 중 오류가 발생했습니다: ' + err.message);
   }finally{
+    document.body.classList.remove('pdf-export-mode');
     if(btn){ btn.disabled = false; btn.textContent = prevText; }
   }
 }
@@ -1807,6 +1829,10 @@ async function buildExcelBlob(kpi){
   kpiBlock(7, 8, 2, '목표 달성률', monthAchieve, '0.0%');
   kpiBlock(7, 10, 2, '전년 동월 매출', kpi.lastYearMonthTotal, '#,##0"원"');
   kpiBlock(7, 12, 2, '전년비 성장률', forecastGrowth===null?'-':forecastGrowth, forecastGrowth===null?undefined:'+0.0%;-0.0%');
+  if(kpi.lastYearTraffic){
+    kpiBlock(7, 14, 2, '전년도 조수', kpi.lastYearTraffic.avgHeadcount, '#,##0"명"');
+    kpiBlock(7, 16, 2, '전년도 조단가', kpi.lastYearTraffic.headcost, '#,##0"원"');
+  }
 
   const channelTotal = kpi.posTotal + kpi.kioskTotal + kpi.deliveryTotal;
   kpiBlock(10, 2, 2, 'POS 매출', kpi.posTotal, '#,##0"원"');
@@ -1814,10 +1840,6 @@ async function buildExcelBlob(kpi){
   kpiBlock(10, 6, 2, '배달 매출', kpi.deliveryTotal, '#,##0"원"');
   kpiBlock(10, 8, 2, '평일 일평균', kpi.weekdayStats.avgNet, '#,##0"원"');
   kpiBlock(10, 10, 2, '주말 일평균', kpi.weekendStats.avgNet, '#,##0"원"');
-  if(kpi.lastYearTraffic){
-    kpiBlock(10, 12, 2, '전년도 조수', kpi.lastYearTraffic.avgHeadcount, '#,##0"명"');
-    kpiBlock(10, 14, 2, '전년도 조단가', kpi.lastYearTraffic.headcost, '#,##0"원"');
-  }
 
   let r = 14;
   function sectionHeader(rr, text, color){
