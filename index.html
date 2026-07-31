@@ -80,6 +80,8 @@
   .like-btn:hover{ border-color: var(--accent); background: var(--accent-soft); }
   .like-btn:active{ transform: scale(0.94); }
   .like-btn.pulse .like-icon{ animation: likePulse .4s ease; }
+  .like-btn.liked{ border-color: var(--accent); background: var(--accent-soft); }
+  .like-btn.liked .like-count{ color: var(--accent); }
   @keyframes likePulse{ 0%{transform:scale(1);} 40%{transform:scale(1.4);} 100%{transform:scale(1);} }
   .like-icon{ font-size:1.3rem; line-height:1; }
   .like-count{ font-family:'JetBrains Mono','Noto Sans KR',monospace; font-weight:700; font-size:.95rem; color: var(--text-dim); min-width:18px; text-align:left; }
@@ -1969,8 +1971,22 @@ async function tryLikeProviders(pickUrl){
   console.error('[좋아요 카운터] 모든 서비스에 연결하지 못했습니다. 광고 차단 확장 프로그램을 꺼보시거나 잠시 후 다시 시도해주세요.');
   return null;
 }
+const LIKE_STORAGE_KEY = 'pb_dashboard_liked';
+
+function applyLikedVisualState(){
+  const liked = localStorage.getItem(LIKE_STORAGE_KEY) === '1';
+  const btn = document.getElementById('likeBtn');
+  const icon = document.getElementById('likeIcon');
+  if(liked){
+    icon.textContent = '❤️';
+    btn.classList.add('liked');
+    btn.title = '이미 좋아요를 눌러주셨어요. 감사합니다!';
+  }
+  return liked;
+}
 async function loadLikeCount(){
   const el = document.getElementById('likeCount');
+  applyLikedVisualState();
   const val = await tryLikeProviders((p,ns,key)=>p.get(ns,key));
   el.textContent = val === null ? '-' : val.toLocaleString('ko-KR');
 }
@@ -1982,7 +1998,15 @@ async function sendLike(){
   icon.textContent = '❤️';
   setTimeout(()=>btn.classList.remove('pulse'), 400);
   const val = await tryLikeProviders((p,ns,key)=>p.hit(ns,key));
-  el.textContent = val === null ? '-' : val.toLocaleString('ko-KR');
+  if(val !== null){
+    el.textContent = val.toLocaleString('ko-KR');
+    localStorage.setItem(LIKE_STORAGE_KEY, '1');
+    btn.classList.add('liked');
+    btn.title = '눌러주셔서 감사합니다! (누를 때마다 계속 반영돼요)';
+  } else {
+    el.textContent = '-';
+    icon.textContent = '🤍'; // 실패했으니 다시 시도할 수 있도록 원복
+  }
 }
 loadLikeCount();
 
