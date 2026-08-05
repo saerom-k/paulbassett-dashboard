@@ -255,7 +255,9 @@
   .two-col{ display:grid; grid-template-columns: 1.1fr .9fr; gap:16px; }
   @media (max-width: 900px){ .two-col{ grid-template-columns:1fr; } }
 
-  .chan-grid, .dow-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px; }
+  .dow-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap:12px; }
+  .chan-grid{ display:flex; flex-wrap:nowrap; gap:12px; }
+  .chan-grid > *{ flex:1 1 0; min-width:0; }
   .subgroup{ border:2px solid var(--info); border-radius:12px; padding:14px 14px 12px; margin-bottom:12px; }
   .subgroup-label{ font-size:.82rem; font-weight:800; color:var(--info); margin-bottom:10px; font-family:'Noto Sans KR',sans-serif; }
 
@@ -425,6 +427,28 @@ const DEFAULT_PRICE_MAP = {
   "[O]BY 나타 초콜릿_75g*60EA/BOX": 711,
   "[O]BY 나타 애플_75g*60EA/BOX": 712
 };
+// 상품명 띄어쓰기가 raw 파일마다 다를 수 있어, 비교 전 모든 공백을 제거하고 매칭합니다.
+function stripWs(s){ return String(s===null||s===undefined?'':s).replace(/\s+/g,''); }
+function normCode(v){
+  if(v===null||v===undefined||v==='') return '';
+  if(typeof v==='number') return String(Math.round(v));
+  const s = String(v).trim();
+  if(/^\d+(\.0+)?$/.test(s)) return String(Math.round(parseFloat(s)));
+  return s;
+}
+const LUNGO_SET = new Set(['H룽고S','H룽 G','I룽고S','I룽고G'].map(stripWs));
+const AMERICANO_SET = new Set(['H아메리카노S','H아메리카노V','I아메리카노S','I아메리카노V'].map(stripWs));
+const DECAF_AMERICANO_SET = new Set(['H디카페인아메리카노S','H디카페인아메리카노V','I디카페인아메리카노S','I디카페인아메리카노V'].map(stripWs));
+const MILLDO_EXCLUDE_CODES = new Set([
+  '273285','273298','273404', // 아이올리 베이컨 토마토 샌드위치
+  '273286','273296','273401', // 바질 치폴레 닭가슴살 샌드위치
+  '273287','273299','273400', // 차지키 에그 샌드위치
+  '273288','272767','273297', // 잠봉 에멘탈 크루아상 샌드위치
+  '273312','273318','273403', // 토마토 바질 치킨샌드위치
+  '273447','273469',          // 아몬드 플로랑탱
+  '273448','273470',          // 초코아몬드 플로랑탱
+  '273446','273468',          // 하트팔미에
+]);
 document.getElementById('midMapInput').value = JSON.stringify(DEFAULT_MID_MAP, null, 2);
 document.getElementById('priceMapInput').value = JSON.stringify(DEFAULT_PRICE_MAP, null, 2);
 document.getElementById('advToggle').addEventListener('click', ()=>{
@@ -718,6 +742,7 @@ function parseProdFile(aoa){
     mid:   findCol(aoa, headerRow, '중분류', 3),
     sub:   findCol(aoa, headerRow, '소분류', 4),
     name:  findCol(aoa, headerRow, '상품명', 6),
+    code:  findCol(aoa, headerRow, '코드', 5),
     qty:   findCol(aoa, headerRow, '총수량', 8),
     net:   findCol(aoa, headerRow, '순매출', 13),
     store: findCol(aoa, headerRow, '매장명', -1),
@@ -855,10 +880,25 @@ function monthBlockToColMap(block){
   block.forEach(({col,month})=>{ if(month>=1 && month<=12) colMap[month-1]=col; });
   return colMap;
 }
-function findAnnualBlockAnySheet(sheetNames, sheets){
+function findYearMonthBlock(aoa, year){
+  const re = new RegExp('^'+year+'년\\s*(\\d{1,2})월$');
+  for(let r=0; r<Math.min(20, aoa.length); r++){
+    const row = aoa[r]||[];
+    const matches=[];
+    row.forEach((c,ci)=>{
+      if(typeof c==='string'){ const m=c.trim().match(re); if(m) matches.push({col:ci, month:+m[1]}); }
+    });
+    if(matches.length>=6) return { row:r, block:matches };
+  }
+  return null;
+}
+function findAnnualBlockAnySheet(sheetNames, sheets, storeNorm){
   // "구분" 라벨 행 옆에 1월~12월이 나열되고, 그 아래쪽 같은 열에 '...계획'(목표), '...실적'(실적)
   // 라벨이 있는 표를 찾는다. (예: 매장별 목표매출 파일의 B62:O65 영역 — 구분/누적/1월..12월 헤더,
   // 사업계획 행, 26년 실적 행)
+  // 이 표는 "현재 엑셀에서 선택된 매장" 기준으로만 값이 채워지므로, 근처에서 매장명을 찾아
+  // 우리가 매칭한 매장과 실제로 일치하는지 확인한다. 다르면(예: '합계'가 선택된 채로 저장된 경우)
+  // 이 블록은 신뢰하지 않고 건너뛴다.
   for(const sname of sheetNames){
     const aoa = sheets[sname];
     for(let r=0; r<aoa.length; r++){
@@ -880,6 +920,22 @@ function findAnnualBlockAnySheet(sheetNames, sheets){
         if(lbl.includes('전년') && lastYearRow<0) lastYearRow=rr;
       }
       if(targetRow>=0 && actualRow>=0){
+        if(storeNorm){
+          let storeLabelFound = null;
+          for(let rr=Math.max(0,r-10); rr<r; rr++){
+            const rrow = aoa[rr]||[];
+            for(const cellVal of rrow){
+              const s = str(cellVal);
+              if(/^\d{2,4}\.\s*\S/.test(s) || s==='합계'){ storeLabelFound = s; break; }
+            }
+            if(storeLabelFound) break;
+          }
+          if(storeLabelFound){
+            const norm = normStoreName(storeLabelFound);
+            const matches = storeLabelFound!=='합계' && (norm===storeNorm || norm.includes(storeNorm) || storeNorm.includes(norm));
+            if(!matches) continue; // 다른 매장(또는 합계)이 선택된 상태로 저장된 블록 — 신뢰하지 않음
+          }
+        }
         return { sheetName:sname, aoa, colMap, targetRow, actualRow, lastYearRow };
       }
     }
@@ -997,36 +1053,55 @@ async function computeAll(){
       }
       if(ok){ matchedMultiStore = true; break; }
     }
-    // monthly plan (targets) & monthly actuals — 우선 "구분/1월..12월 + 사업계획/26년 실적" 형태의
-    // 전용 연간 실적표(예: 매장별 목표매출 파일 B62:O65)를 먼저 찾는다. 이 표는 매장 선택과 무관하게
-    // 이미 해당 매장 기준으로 값이 채워져 있는 표이므로 매장 행을 다시 찾을 필요가 없다.
-    const annualBlock = findAnnualBlockAnySheet(targetWB.sheetNames, targetWB.sheets);
-    if(annualBlock){
-      monthlyTargets12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.targetRow][c]));
-      monthlyActuals12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.actualRow][c]));
-      if(annualBlock.lastYearRow>=0){
-        monthlyLastYear12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.lastYearRow][c]));
+    // monthly plan (targets) & monthly actuals
+    // 1순위: 매장별로 나뉜 "26년 사업계획"/"26년 실적" 형태의 시트에서 매장 행을 정확히 찾아 읽는다
+    // (매장명을 직접 대조하므로 가장 신뢰도가 높음).
+    for(const sname of targetWB.sheetNames){
+      const aoa = targetWB.sheets[sname];
+      const info = findMonthBlocks(aoa);
+      if(!info) continue;
+      const nameCol = guessStoreNameCol(aoa);
+      if(nameCol<0) continue;
+      const storeRow = findStoreRowInSheet(aoa, nameCol, storeNorm);
+      if(storeRow<0) continue;
+      const colMap = monthBlockToColMap(info.blocks[0]);
+      const vals = colMap.map(c => c===null ? 0 : num(aoa[storeRow][c]));
+      const looksLikeTarget = str(sname).includes('계획');
+      const looksLikeActual = str(sname).includes('실적');
+      if(looksLikeTarget && vals.some(v=>v>0)) monthlyTargets12 = vals;
+      else if(looksLikeActual && vals.some(v=>v>0)) monthlyActuals12 = vals;
+      else if(!looksLikeTarget && !looksLikeActual){
+        if(monthlyTargets12.every(v=>v===0)) monthlyTargets12 = vals;
+        else if(monthlyActuals12.every(v=>v===0)) monthlyActuals12 = vals;
       }
-    } else {
-      // fallback: 매장별로 나뉜 "26년 사업계획"/"26년 실적" 형태의 시트에서 매장 행을 찾아 읽는다.
+    }
+    // 2순위: 위에서 못 찾았을 때만 "구분/1월..12월 + 사업계획/26년 실적" 형태의 단일 블록
+    // (예: 매장별 목표매출 파일 B62:O65)을 시도한다. 이 표는 엑셀에서 현재 선택된 매장 기준으로만
+    // 값이 채워지므로, 근처 매장명이 우리가 매칭한 매장과 실제로 일치하는 경우에만 신뢰한다.
+    if(monthlyTargets12.every(v=>v===0) && monthlyActuals12.every(v=>v===0)){
+      const annualBlock = findAnnualBlockAnySheet(targetWB.sheetNames, targetWB.sheets, storeNorm);
+      if(annualBlock){
+        monthlyTargets12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.targetRow][c]));
+        monthlyActuals12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.actualRow][c]));
+        if(annualBlock.lastYearRow>=0){
+          monthlyLastYear12 = annualBlock.colMap.map(c => c===null ? 0 : num(annualBlock.aoa[annualBlock.lastYearRow][c]));
+        }
+      }
+    }
+    // 전년(25년) 월별 매출 — "25년 매출"처럼 "YYYY년 N월" 형태 헤더를 쓰는 매장별 시트를 우선 사용
+    // (매장명을 직접 대조하므로 위의 단일 블록보다 신뢰도가 높음).
+    if(monthlyLastYear12.every(v=>v===0)){
       for(const sname of targetWB.sheetNames){
         const aoa = targetWB.sheets[sname];
-        const info = findMonthBlocks(aoa);
+        const info = findYearMonthBlock(aoa, YEAR-1);
         if(!info) continue;
         const nameCol = guessStoreNameCol(aoa);
         if(nameCol<0) continue;
         const storeRow = findStoreRowInSheet(aoa, nameCol, storeNorm);
         if(storeRow<0) continue;
-        const colMap = monthBlockToColMap(info.blocks[0]);
+        const colMap = monthBlockToColMap(info.block);
         const vals = colMap.map(c => c===null ? 0 : num(aoa[storeRow][c]));
-        const looksLikeTarget = str(sname).includes('계획');
-        const looksLikeActual = str(sname).includes('실적');
-        if(looksLikeTarget && vals.some(v=>v>0)) monthlyTargets12 = vals;
-        else if(looksLikeActual && vals.some(v=>v>0)) monthlyActuals12 = vals;
-        else if(!looksLikeTarget && !looksLikeActual){
-          if(monthlyTargets12.every(v=>v===0)) monthlyTargets12 = vals;
-          else if(monthlyActuals12.every(v=>v===0)) monthlyActuals12 = vals;
-        }
+        if(vals.some(v=>v>0)){ monthlyLastYear12 = vals; break; }
       }
     }
     // last-year same-weekday daily sheet
@@ -1096,12 +1171,13 @@ async function computeAll(){
     const headcount = curRow ? num(curRow[COL.dae.headcount]) : 0;
     const headcost = curRow ? num(curRow[COL.dae.headcost]) : 0;
 
-    let posNet = 0, kioskNet = 0;
+    let posNet = 0, kioskNet = 0, dtNet = 0;
     posRows.forEach(r=>{
       if(normalizeDateStr(r[COL.pos.date]) !== dateStr) return;
       const posno = str(r[COL.pos.posno]);
       const v = num(r[COL.pos.net]);
       if(posno.startsWith('000')) posNet += v;
+      else if(posno.startsWith('001')) dtNet += v;
       else if(posno.startsWith('003')) kioskNet += v;
     });
 
@@ -1113,7 +1189,7 @@ async function computeAll(){
       achieveRate: target>0 ? net/target : 0,
       lastYearNet,
       yoyGrowth: lastYearNet>0 ? (net/lastYearNet - 1) : null,
-      headcount, headcost, posNet, kioskNet, deliveryNet,
+      headcount, headcost, posNet, kioskNet, dtNet, deliveryNet,
       weekdayText, isHoliday, dow, dowGroup
     });
   }
@@ -1123,11 +1199,14 @@ async function computeAll(){
   const cumNet = daily.reduce((s,d)=>s+d.net,0);
   const cumTarget = daily.filter(d=>d.day<=DAY_CUTOFF).reduce((s,d)=>s+d.target,0);
   const cumLastYear = daily.filter(d=>d.day<=DAY_CUTOFF).reduce((s,d)=>s+d.lastYearNet,0);
-  const lastYearMonthTotal = daily.reduce((s,d)=>s+d.lastYearNet,0);
+  // 전년 매출 기준 = 목표매출 파일의 "25년 매출" 시트(monthlyLastYear12) 값을 우선 사용합니다.
+  // 그 값이 없을 때만(예: 해당 시트를 찾지 못한 경우) 일자별 전년 데이터 합계로 대체합니다.
+  const lastYearMonthTotal = (monthlyLastYear12[MONTH-1] > 0) ? monthlyLastYear12[MONTH-1] : daily.reduce((s,d)=>s+d.lastYearNet,0);
   const cumHeadcount = daily.filter(d=>d.day<=DAY_CUTOFF).reduce((s,d)=>s+d.headcount,0);
 
   const posTotal = daily.reduce((s,d)=>s+d.posNet,0);
   const kioskTotal = daily.reduce((s,d)=>s+d.kioskNet,0);
+  const dtTotal = daily.reduce((s,d)=>s+d.dtNet,0);
   const deliveryTotal = daily.reduce((s,d)=>s+d.deliveryNet,0);
 
   const avgHeadcount = (()=>{ const hs=daily.filter(d=>d.headcount>0); return hs.length? hs.reduce((s,d)=>s+d.headcount,0)/hs.length:0; })();
@@ -1194,8 +1273,24 @@ async function computeAll(){
   const monthProdRowsLY = prodPrevRows.filter(r=>{
     const d = normalizeDateStr(r[PCOL_LY.date]);
     if(!d) return false;
-    const [y,m] = d.split('-').map(Number);
-    return y===(YEAR-1) && m===MONTH;
+    const [y,m,day] = d.split('-').map(Number);
+    return y===(YEAR-1) && m===MONTH && day<=DAY_CUTOFF;
+  });
+
+  // ---- 룽고/아메리카노/디카페인 아메리카노 비중, 밀도 매출 비중 (소분류 하단 도넛 그래프용) ----
+  let coffeeMix = { lungo:0, americano:0, decaf:0 };
+  let milldoNet = 0, milldoQty = 0;
+  monthProdRows.forEach(r=>{
+    const nameStripped = stripWs(str(r[PCOL.name]));
+    const net = num(r[PCOL.net]);
+    const qty = num(r[PCOL.qty]);
+    if(LUNGO_SET.has(nameStripped)) coffeeMix.lungo += net;
+    else if(AMERICANO_SET.has(nameStripped)) coffeeMix.americano += net;
+    else if(DECAF_AMERICANO_SET.has(nameStripped)) coffeeMix.decaf += net;
+    if(nameStripped.includes('밀도')){
+      const code = PCOL.code>=0 ? normCode(r[PCOL.code]) : '';
+      if(!MILLDO_EXCLUDE_CODES.has(code)){ milldoNet += net; milldoQty += qty; }
+    }
   });
 
   const catCur = aggregateCategoryData(monthProdRows, PCOL, midMap);
@@ -1210,6 +1305,41 @@ async function computeAll(){
   }
   const midTotalLY = Object.values(midAggLY).reduce((s,v)=>s+v.net,0);
   const subTotalLY = Object.values(subAggLY).reduce((s,v)=>s+v.net,0);
+
+  // ---- 밀도 상품별 실적 (도넛 클릭 시 표시) ----
+  const milldoProdCur = {};
+  monthProdRows.forEach(r=>{
+    const nameStripped = stripWs(str(r[PCOL.name]));
+    if(!nameStripped.includes('밀도')) return;
+    const code = PCOL.code>=0 ? normCode(r[PCOL.code]) : '';
+    if(MILLDO_EXCLUDE_CODES.has(code)) return;
+    const name = str(r[PCOL.name]);
+    if(!milldoProdCur[name]) milldoProdCur[name] = {qty:0, net:0};
+    milldoProdCur[name].qty += num(r[PCOL.qty]);
+    milldoProdCur[name].net += num(r[PCOL.net]);
+  });
+  const milldoProdLY = {};
+  monthProdRowsLY.forEach(r=>{
+    const nameStripped = stripWs(str(r[PCOL_LY.name]));
+    if(!nameStripped.includes('밀도')) return;
+    const code = PCOL_LY.code>=0 ? normCode(r[PCOL_LY.code]) : '';
+    if(MILLDO_EXCLUDE_CODES.has(code)) return;
+    const name = str(r[PCOL_LY.name]);
+    if(!milldoProdLY[name]) milldoProdLY[name] = {qty:0, net:0};
+    milldoProdLY[name].qty += num(r[PCOL_LY.qty]);
+    milldoProdLY[name].net += num(r[PCOL_LY.net]);
+  });
+  const milldoNetLY = Object.values(milldoProdLY).reduce((s,v)=>s+v.net,0);
+  const milldoProductList = Object.keys(milldoProdCur).map(k=>{
+    const ly = milldoProdLY[k];
+    return {
+      name:k, ...milldoProdCur[k], share: milldoNet>0? milldoProdCur[k].net/milldoNet:0,
+      lyQty: hasProdLY ? (ly? ly.qty : 0) : null,
+      lyNet: hasProdLY ? (ly? ly.net : 0) : null,
+      lyShare: (hasProdLY && milldoNetLY>0) ? ((ly?ly.net:0)/milldoNetLY) : (hasProdLY ? 0 : null),
+    };
+  }).sort((a,b)=>b.net-a.net).map((p,i)=>({rank:i+1, ...p}));
+  const milldoProdQtyTotal = Object.values(milldoProdCur).reduce((s,v)=>s+v.qty,0);
 
   const midTotal = Object.values(midAgg).reduce((s,v)=>s+v.net,0);
   const subTotal = Object.values(subAgg).reduce((s,v)=>s+v.net,0);
@@ -1264,11 +1394,26 @@ async function computeAll(){
     prodGroup[name].qty += num(r[PCOL.qty]);
     prodGroup[name].net += num(r[PCOL.net]);
   });
+  const prodGroupLY = {};
+  monthProdRowsLY.forEach(r=>{
+    const name = str(r[PCOL_LY.name]);
+    if(!name || name==='합계') return;
+    if(!prodGroupLY[name]) prodGroupLY[name] = {qty:0, net:0};
+    prodGroupLY[name].qty += num(r[PCOL_LY.qty]);
+    prodGroupLY[name].net += num(r[PCOL_LY.net]);
+  });
   const prodTotalNet = Object.values(prodGroup).reduce((s,v)=>s+v.net,0);
   const prodTotalQty = Object.values(prodGroup).reduce((s,v)=>s+v.qty,0);
-  const productAll = Object.keys(prodGroup).map(k=>({name:k, ...prodGroup[k]}))
-    .sort((a,b)=>b.net-a.net)
-    .map((p,i)=>({rank:i+1, ...p, share: prodTotalNet>0? p.net/prodTotalNet:0}));
+  const prodTotalNetLY = Object.values(prodGroupLY).reduce((s,v)=>s+v.net,0);
+  const productAll = Object.keys(prodGroup).map(k=>{
+    const ly = prodGroupLY[k];
+    return {
+      name:k, ...prodGroup[k], share: prodTotalNet>0? prodGroup[k].net/prodTotalNet:0,
+      lyQty: hasProdLY ? (ly? ly.qty : 0) : null,
+      lyNet: hasProdLY ? (ly? ly.net : 0) : null,
+      lyShare: (hasProdLY && prodTotalNetLY>0) ? ((ly?ly.net:0)/prodTotalNetLY) : (hasProdLY ? 0 : null),
+    };
+  }).sort((a,b)=>b.net-a.net).map((p,i)=>({rank:i+1, ...p}));
   const productTop20 = productAll.slice(0,20);
 
   // ---- 6. waste TOP20 (+ 전체 순위) ----
@@ -1341,9 +1486,11 @@ async function computeAll(){
   return {
     YEAR, MONTH, DIM, DAY_CUTOFF,
     storeName: str(document.getElementById('storeNameInput').value) || '폴 바셋',
+    isDtStore: !!(storeLabel && storeLabel.toUpperCase().includes('DT')),
+    coffeeMix, milldoNet, milldoQty, milldoProductList, milldoProdQtyTotal,
     storeMatchMode: !targetWB ? 'none' : (matchedMultiStore ? 'auto' : 'legacy'),
     daily, cumNet, cumTarget, cumLastYear, lastYearMonthTotal, monthTargetTotal,
-    posTotal, kioskTotal, deliveryTotal, avgHeadcount, avgHeadcost,
+    posTotal, kioskTotal, dtTotal, deliveryTotal, avgHeadcount, avgHeadcost,
     weekdayStats, weekendStats, lastYearTraffic,
     midList, midTotal, subList, subTotal, midDetailList,
     productTop20, productAll, prodTotalNet, prodTotalQty,
@@ -1374,6 +1521,81 @@ function donutSVG(pct, colorHex, size, label){
       <circle cx="${px/2}" cy="${px/2}" r="${r}" fill="none" stroke="${colorHex}" stroke-width="${stroke}" stroke-linecap="round" stroke-dasharray="${dash} ${gap}" transform="rotate(-90 ${px/2} ${px/2})"/>
     </svg>
     <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Noto Sans KR',sans-serif;font-weight:800;font-size:${fontSize}px;color:#17171A">${label}</div>
+  </div>`;
+}
+function multiDonutSVG(segments, size){
+  const px = size || 150;
+  const stroke = Math.max(16, Math.round(px*0.22));
+  const r = (px - stroke)/2;
+  const c = 2*Math.PI*r;
+  const total = segments.reduce((s,x)=>s+x.value,0);
+  let offset = 0;
+  let circles = total<=0 ? `<circle cx="${px/2}" cy="${px/2}" r="${r}" fill="none" stroke="#F2F2F3" stroke-width="${stroke}"/>` : '';
+  segments.forEach(seg=>{
+    const frac = total>0 ? seg.value/total : 0;
+    if(frac<=0) return;
+    const dash = c*frac;
+    const gap = c-dash;
+    circles += `<circle cx="${px/2}" cy="${px/2}" r="${r}" fill="none" stroke="${seg.color}" stroke-width="${stroke}" stroke-dasharray="${dash.toFixed(1)} ${gap.toFixed(1)}" stroke-dashoffset="${(-offset).toFixed(1)}" transform="rotate(-90 ${px/2} ${px/2})"/>`;
+    offset += dash;
+  });
+  return `<svg width="${px}" height="${px}" viewBox="0 0 ${px} ${px}">${circles}</svg>`;
+}
+function coffeeAndMilldoBlock(kpi){
+  const mix = kpi.coffeeMix || {lungo:0, americano:0, decaf:0};
+  const mixTotal = mix.lungo + mix.americano + mix.decaf;
+  const mixSegs = [
+    {label:'룽고', value:mix.lungo, color:'#2C1810'},
+    {label:'아메리카노', value:mix.americano, color:'#E4002B'},
+    {label:'디카페인 아메리카노', value:mix.decaf, color:'#1E3A8A'},
+  ];
+  const mixLegend = mixSegs.map(s=>{
+    const pct = mixTotal>0 ? s.value/mixTotal : 0;
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="width:12px;height:12px;border-radius:3px;background:${s.color};flex-shrink:0"></span>
+      <span style="font-size:.86rem;color:var(--text-dim);flex:1">${s.label}</span>
+      <span style="font-size:.86rem;font-weight:700">${fmtPct(pct)}</span>
+      <span style="font-size:.78rem;color:var(--text-mute);min-width:90px;text-align:right">${fmtWon(s.value)}</span>
+    </div>`;
+  }).join('');
+  const milldoShare = kpi.prodTotalNet>0 ? kpi.milldoNet/kpi.prodTotalNet : 0;
+  const hasMilldo = (kpi.milldoProductList && kpi.milldoProductList.length > 0);
+  const titleStyle = "font-family:'Noto Sans KR',sans-serif;font-size:1.32rem;font-weight:800;color:var(--text);margin-bottom:14px";
+
+  const mixColumn = `<div style="display:flex;flex-direction:column;height:100%">
+    <div style="${titleStyle}">주요상품 매출 비중</div>
+    <div class="card" style="padding:22px;flex:1">
+      <div class="label" style="margin-bottom:14px">룽고 · 아메리카노 · 디카페인 아메리카노 매출 비중</div>
+      <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+        <div style="display:flex;justify-content:center">${multiDonutSVG(mixSegs, 150)}</div>
+        <div style="flex:1;min-width:200px">${mixLegend}</div>
+      </div>
+      ${mixTotal===0?'<p class="note">해당 상품 판매 데이터가 없습니다.</p>':''}
+    </div>
+  </div>`;
+
+  if(!hasMilldo){
+    return mixColumn;
+  }
+
+  const milldoColumn = `<div style="display:flex;flex-direction:column;height:100%">
+    <div style="${titleStyle}">밀도 매출 비중</div>
+    <div class="card" style="padding:22px;flex:1">
+      <div class="label" style="margin-bottom:14px">(샌드위치, 구움과자 3종 제외)</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap">
+        <div style="display:flex;justify-content:center">${donutSVG(milldoShare, '#E4002B', 150, fmtPct(milldoShare,0))}</div>
+        <div style="text-align:left">
+          <div class="value" style="font-size:1.15rem">${fmtWon(kpi.milldoNet)}</div>
+          <div class="sub">판매수량 ${fmtNum(kpi.milldoQty)}개</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  return `<div class="two-col">${mixColumn}${milldoColumn}</div>
+  <div style="margin-top:16px">
+    <div style="font-family:'Noto Sans KR',sans-serif;font-size:1.32rem;font-weight:800;color:var(--text);margin-bottom:14px">밀도 상품별 실적 (전 상품)</div>
+    ${productTable(kpi.milldoProductList, kpi.milldoProdQtyTotal, kpi.milldoNet)}
   </div>`;
 }
 function fmtDiff(diff, unit){
@@ -1419,11 +1641,13 @@ function annualChartSVG(annual){
     bars += `<rect x="${lyX}" y="${padT+plotH-lyH}" width="${barW}" height="${lyH}" rx="2" fill="var(--text-mute)"/>`;
     bars += `<rect x="${aX}" y="${padT+plotH-aH}" width="${barW}" height="${aH}" rx="2" fill="${a.isCurrent? 'var(--accent-bright)' : 'var(--accent)'}"/>`;
     bars += `<text x="${gx}" y="${H-10}" text-anchor="middle" font-size="11" fill="var(--text-mute)" font-family="Noto Sans KR">${a.month}월</text>`;
-    // 달성률 100%는 그 달 목표 막대의 맨 위 높이(tH)와 정확히 같은 높이가 되도록 표시합니다.
+    // 달성률 100%는 그 달 목표 막대의 맨 위 높이(tH)와 정확히 같은 높이가 되도록 표시하고,
+    // 점의 가로 위치는 26년 실적(당월 실적) 막대 중심에 오도록 맞춥니다.
     if(a.achieveRate!==null && a.target>0){
       const rawY = padT + plotH - (a.achieveRate * tH);
       const dotY = Math.max(padT + 12, Math.min(padT + plotH, rawY));
-      linePts.push([gx, dotY, a.achieveRate]);
+      const dotX = aX + barW/2;
+      linePts.push([dotX, dotY, a.achieveRate]);
     }
   });
   let linePath = '';
@@ -1452,7 +1676,7 @@ function render(res){
   const cumAchieve = kpi.cumTarget>0 ? kpi.cumNet/kpi.cumTarget : 0;
   const monthAchieve = kpi.monthTargetTotal>0 ? kpi.forecast/kpi.monthTargetTotal : 0;
   const forecastGrowth = kpi.lastYearMonthTotal>0 ? (kpi.forecast/kpi.lastYearMonthTotal - 1) : null;
-  const channelTotal = kpi.posTotal + kpi.kioskTotal + kpi.deliveryTotal;
+  const channelTotal = kpi.posTotal + kpi.kioskTotal + kpi.dtTotal;
 
   el.innerHTML = `
     <div class="topbar">
@@ -1493,7 +1717,7 @@ function render(res){
     `)}
 
     ${block('TRAFFIC', '조수 · 조단가 / 채널별 매출', `
-      <div class="two-col">
+      <div class="two-col" style="grid-template-columns:1fr 1.4fr">
         <div>
           <div class="subgroup">
             <div class="subgroup-label">당월</div>
@@ -1515,7 +1739,8 @@ function render(res){
         <div class="chan-grid">
           ${channelCard('POS', kpi.posTotal, channelTotal)}
           ${channelCard('KIOSK', kpi.kioskTotal, channelTotal)}
-          ${channelCard('배달', kpi.deliveryTotal, channelTotal)}
+          ${kpi.isDtStore ? channelCard('DT', kpi.dtTotal, channelTotal) : ''}
+          ${channelCard('배달', kpi.deliveryTotal, kpi.cumNet, '#0E9F5A')}
         </div>
       </div>
       ${kpi.hasPos ? '' : '<p class="note">POS별매출조회 파일이 없어 POS·KIOSK 채널 구분은 0으로 표시됩니다.</p>'}
@@ -1545,6 +1770,8 @@ function render(res){
     ` : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
     ${block('CATEGORY', '카테고리별 매출 — 소분류', kpi.hasProd ? catTable(kpi.subList, kpi.subTotal, true) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
 
+    ${block('MIX', '', kpi.hasProd ? coffeeAndMilldoBlock(kpi) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
+
     ${block('RANKING', '상품 판매 TOP 20', kpi.hasProd ? productTable(kpi.productTop20, kpi.prodTotalQty, kpi.prodTotalNet) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
 
     ${block('WASTE', '폐기 현황', wasteBlock(kpi))}
@@ -1565,19 +1792,20 @@ function render(res){
 function block(eyebrow, title, inner){
   return `<section class="block">
     <div class="block-head"><div class="rule"></div></div>
-    <h2 class="block-title">${title}</h2>
-    <div style="margin-top:14px">${inner}</div>
+    ${title ? `<h2 class="block-title">${title}</h2>` : ''}
+    <div style="margin-top:${title?'14px':'0'}">${inner}</div>
   </section>`;
 }
-function channelCard(label, value, total){
+function channelCard(label, value, total, colorHex){
   const share = total>0 ? value/total : 0;
-  return `<div class="card" style="text-align:center;height:100%;display:flex;flex-direction:column;justify-content:space-between;min-height:210px">
+  const donut = colorHex ? donutSVG(share, colorHex, 56, fmtPct(share,0)) : shareCircle(share, 56);
+  return `<div class="card" style="text-align:center;height:100%;display:flex;flex-direction:column;justify-content:space-between;min-height:190px;padding:14px 10px">
     <div>
       <div class="label" style="white-space:nowrap">${label}</div>
-      <div class="value" style="font-size:1.35rem;white-space:nowrap;margin-top:4px">${fmtWon(value)}</div>
+      <div class="value" style="font-size:1.05rem;margin-top:4px;line-height:1.2">${fmtWon(value)}</div>
     </div>
-    <div style="display:flex;justify-content:center;margin:10px 0">${shareCircle(share, 64)}</div>
-    <div class="sub" style="margin-top:0;white-space:nowrap;font-size:.88rem;font-weight:700">비중 ${fmtPct(share)}</div>
+    <div style="display:flex;justify-content:center;margin:8px 0">${donut}</div>
+    <div class="sub" style="margin-top:0;white-space:nowrap;font-size:.82rem;font-weight:700">비중 ${fmtPct(share)}</div>
   </div>`;
 }
 function dowCard(title, stats, lyStats){
@@ -1603,22 +1831,22 @@ function catTable(list, total, isSub, clickable){
       <td>${fmtNum(x.qty)}</td>
       <td>${fmtWon(x.net)}</td>
       <td>${fmtPct(x.share)}</td>
+      ${hasLY?`<td class="${growth===null?'':(growth>=0?'pos':'neg')}">${growth===null?'-':fmtSignedPct(growth)}</td>`:''}
       ${hasLY?`<td>${x.lyQty!=null?fmtNum(x.lyQty):'-'}</td>`:''}
       ${hasLY?`<td>${x.lyNet!=null?fmtWon(x.lyNet):'-'}</td>`:''}
-      ${hasLY?`<td class="${growth===null?'':(growth>=0?'pos':'neg')}">${growth===null?'-':fmtSignedPct(growth)}</td>`:''}
       ${hasLY?`<td>${x.lyShare!=null?fmtPct(x.lyShare):'-'}</td>`:''}
       <td class="bar-cell" style="width:140px">${barCell(x.net, max)}</td>
     </tr>`;
   }).join('');
   const groupHead = hasLY ? `<tr>
       <th rowspan="2" style="vertical-align:bottom">${isSub?'소분류':'대분류'}</th>
-      <th colspan="3" class="group-head cur">당월</th>
-      <th colspan="4" class="group-head ly">전년</th>
+      <th colspan="4" class="group-head cur">당월</th>
+      <th colspan="3" class="group-head ly">전년 동기</th>
       <th rowspan="2"></th>
     </tr>
     <tr>
+      <th>수량</th><th>매출(VAT 별도)</th><th>비중</th><th>성장률</th>
       <th>수량</th><th>매출(VAT 별도)</th><th>비중</th>
-      <th>수량</th><th>매출(VAT 별도)</th><th>성장률</th><th>비중</th>
     </tr>` : `<tr><th>${isSub?'소분류':'대분류'}</th><th>수량</th><th>매출(VAT 별도)</th><th>비중</th><th></th></tr>`;
   return `<div class="tablewrap"><table class="dt">
     <thead>${groupHead}</thead>
@@ -1666,9 +1894,9 @@ function productTable(list, totalQty, totalNet){
       <td>${fmtNum(x.qty)}</td>
       <td>${fmtWon(x.net)}</td>
       <td>${fmtPct(x.share)}</td>
+      ${hasLY?`<td class="${growth===null?'':(growth>=0?'pos':'neg')}">${growth===null?'-':fmtSignedPct(growth)}</td>`:''}
       ${hasLY?`<td>${x.lyQty!=null?fmtNum(x.lyQty):'-'}</td>`:''}
       ${hasLY?`<td>${x.lyNet!=null?fmtWon(x.lyNet):'-'}</td>`:''}
-      ${hasLY?`<td class="${growth===null?'':(growth>=0?'pos':'neg')}">${growth===null?'-':fmtSignedPct(growth)}</td>`:''}
       ${hasLY?`<td>${x.lyShare!=null?fmtPct(x.lyShare):'-'}</td>`:''}
       <td class="bar-cell" style="width:120px">${barCell(x.net, max)}</td>
     </tr>`;
@@ -1676,13 +1904,13 @@ function productTable(list, totalQty, totalNet){
   const groupHead = hasLY ? `<tr>
       <th rowspan="2" style="vertical-align:bottom">순위</th>
       <th rowspan="2" style="vertical-align:bottom;text-align:left">상품명</th>
-      <th colspan="3" class="group-head cur">당월</th>
-      <th colspan="4" class="group-head ly">전년</th>
+      <th colspan="4" class="group-head cur">당월</th>
+      <th colspan="3" class="group-head ly">전년 동기</th>
       <th rowspan="2"></th>
     </tr>
     <tr>
-      <th>판매수량</th><th>매출(VAT 별도)</th><th>비중</th>
-      <th>수량</th><th>매출(VAT 별도)</th><th>성장률</th><th>비중</th>
+      <th>판매수량</th><th>매출(VAT 별도)</th><th>비중</th><th>성장률</th>
+      <th>수량</th><th>매출(VAT 별도)</th><th>비중</th>
     </tr>` : `<tr><th>순위</th><th style="text-align:left">상품명</th><th>판매수량</th><th>매출(VAT 별도)</th><th>비중</th><th></th></tr>`;
   return `<div class="tablewrap"><table class="dt">
     <thead>${groupHead}</thead>
@@ -1719,6 +1947,7 @@ function annualTable(kpi){
   const yoySum = dataLastYearSum>0 ? (dataActualSum-dataLastYearSum)/dataLastYearSum : null;
   const achieveSum = dataTargetSum>0 ? dataActualSum/dataTargetSum : null;
   return `<div class="tablewrap"><table class="dt">
+    <colgroup><col style="width:10%"><col style="width:18%"><col style="width:18%"><col style="width:18%"><col style="width:18%"><col style="width:18%"></colgroup>
     <thead><tr><th style="text-align:left">월</th><th>목표</th><th>전년 실적</th><th>${kpi.YEAR}년 실적</th><th>달성률</th><th>전년대비</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr><td style="text-align:left">합계 · 월평균(${dataMonths.length}개월 반영)</td><td>${fmtWon(dataTargetSum)}</td><td>${fmtWon(dataLastYearSum)}</td><td>${fmtWon(dataActualSum)}</td><td class="${achieveSum===null?'':(achieveSum>=1?'pos':'neg')}">${achieveSum===null?'-':fmtPct(achieveSum)}</td><td class="${yoySum===null?'':(yoySum>=0?'pos':'neg')}">${yoySum===null?'-':fmtSignedPct(yoySum)}</td></tr></tfoot>
@@ -2162,24 +2391,27 @@ async function buildExcelBlob(kpi){
   kpiBlock(7, 10, 2, '전년 동월 매출', kpi.lastYearMonthTotal, '#,##0"원"');
   kpiBlock(7, 12, 2, '전년비 성장률', forecastGrowth===null?'-':forecastGrowth, forecastGrowth===null?undefined:'+0.0%;-0.0%', riseFallColor(forecastGrowth));
 
-  const channelTotal = kpi.posTotal + kpi.kioskTotal + kpi.deliveryTotal;
+  const channelTotal = kpi.posTotal + kpi.kioskTotal + kpi.dtTotal;
   const posShare = channelTotal>0? kpi.posTotal/channelTotal:0;
+  const dtShare = channelTotal>0? kpi.dtTotal/channelTotal:0;
   const kioskShare = channelTotal>0? kpi.kioskTotal/channelTotal:0;
-  const deliveryShare = channelTotal>0? kpi.deliveryTotal/channelTotal:0;
+  const deliveryShare = kpi.cumNet>0? kpi.deliveryTotal/kpi.cumNet:0;
   kpiBlock(10, 2, 2, 'POS 매출', kpi.posTotal, '#,##0"원"');
   merge1(12,2,12,3); const posP = ws1.getCell(12,2); posP.value = posShare; styleCell(ws1, posP, {font:{size:10,color:{argb:'FF6B3A2A'}}, numFmt:'"비중 "0.0%', fill:CREAM, border:false});
   kpiBlock(10, 4, 2, 'KIOSK 매출', kpi.kioskTotal, '#,##0"원"');
   merge1(12,4,12,5); const kioskP = ws1.getCell(12,4); kioskP.value = kioskShare; styleCell(ws1, kioskP, {font:{size:10,color:{argb:'FF6B3A2A'}}, numFmt:'"비중 "0.0%', fill:CREAM, border:false});
-  kpiBlock(10, 6, 2, '배달 매출', kpi.deliveryTotal, '#,##0"원"');
-  merge1(12,6,12,7); const dlvP = ws1.getCell(12,6); dlvP.value = deliveryShare; styleCell(ws1, dlvP, {font:{size:10,color:{argb:'FF6B3A2A'}}, numFmt:'"비중 "0.0%', fill:CREAM, border:false});
+  kpiBlock(10, 6, 2, 'DT 매출', kpi.dtTotal, '#,##0"원"');
+  merge1(12,6,12,7); const dtP = ws1.getCell(12,6); dtP.value = dtShare; styleCell(ws1, dtP, {font:{size:10,color:{argb:'FF6B3A2A'}}, numFmt:'"비중 "0.0%', fill:CREAM, border:false});
+  kpiBlock(10, 8, 2, '배달 매출', kpi.deliveryTotal, '#,##0"원"');
+  merge1(12,8,12,9); const dlvP = ws1.getCell(12,8); dlvP.value = deliveryShare; styleCell(ws1, dlvP, {font:{size:10,color:{argb:'FF6B3A2A'}}, numFmt:'"비중 "0.0%', fill:CREAM, border:false});
   ws1.getRow(12).height = 16;
 
   const weekdayGrowth = (kpi.lastYearTraffic && kpi.lastYearTraffic.weekdayStats.avgNet>0) ? (kpi.weekdayStats.avgNet - kpi.lastYearTraffic.weekdayStats.avgNet)/kpi.lastYearTraffic.weekdayStats.avgNet : null;
   const weekendGrowth = (kpi.lastYearTraffic && kpi.lastYearTraffic.weekendStats.avgNet>0) ? (kpi.weekendStats.avgNet - kpi.lastYearTraffic.weekendStats.avgNet)/kpi.lastYearTraffic.weekendStats.avgNet : null;
-  kpiBlock(10, 8, 2, '평일 일평균', kpi.weekdayStats.avgNet, '#,##0"원"');
-  merge1(12,8,12,9); const wdG = ws1.getCell(12,8); wdG.value = weekdayGrowth===null?'-':weekdayGrowth; styleCell(ws1, wdG, {font:{size:10,color: weekdayGrowth===null?{argb:'FF6B3A2A'}:{argb:riseFallColor(weekdayGrowth)}}, numFmt: weekdayGrowth===null?undefined:'"전년비 "+0.0%;"전년비 "-0.0%', fill:CREAM, border:false, align:{horizontal:'center'}});
-  kpiBlock(10, 10, 2, '주말 일평균', kpi.weekendStats.avgNet, '#,##0"원"');
-  merge1(12,10,12,11); const weG = ws1.getCell(12,10); weG.value = weekendGrowth===null?'-':weekendGrowth; styleCell(ws1, weG, {font:{size:10,color: weekendGrowth===null?{argb:'FF6B3A2A'}:{argb:riseFallColor(weekendGrowth)}}, numFmt: weekendGrowth===null?undefined:'"전년비 "+0.0%;"전년비 "-0.0%', fill:CREAM, border:false, align:{horizontal:'center'}});
+  kpiBlock(10, 10, 2, '평일 일평균', kpi.weekdayStats.avgNet, '#,##0"원"');
+  merge1(12,10,12,11); const wdG = ws1.getCell(12,10); wdG.value = weekdayGrowth===null?'-':weekdayGrowth; styleCell(ws1, wdG, {font:{size:10,color: weekdayGrowth===null?{argb:'FF6B3A2A'}:{argb:riseFallColor(weekdayGrowth)}}, numFmt: weekdayGrowth===null?undefined:'"전년비 "+0.0%;"전년비 "-0.0%', fill:CREAM, border:false, align:{horizontal:'center'}});
+  kpiBlock(10, 12, 2, '주말 일평균', kpi.weekendStats.avgNet, '#,##0"원"');
+  merge1(12,12,12,13); const weG = ws1.getCell(12,12); weG.value = weekendGrowth===null?'-':weekendGrowth; styleCell(ws1, weG, {font:{size:10,color: weekendGrowth===null?{argb:'FF6B3A2A'}:{argb:riseFallColor(weekendGrowth)}}, numFmt: weekendGrowth===null?undefined:'"전년비 "+0.0%;"전년비 "-0.0%', fill:CREAM, border:false, align:{horizontal:'center'}});
 
   function sectionHeader1(rr, text, color){
     merge1(rr,2,rr,21);
@@ -2243,16 +2475,17 @@ async function buildExcelBlob(kpi){
   const ws2 = wb.addWorksheet('일별입력', { views:[{showGridLines:false}] });
   setColWidths(ws2, false);
   ws2.getColumn(2).width = 12;
-  const dayHeaders = ['일자','요일','순매출','일자별목표','달성률','전년매출','전년비','조수','조단가','POS','POS 비중','KIOSK','KIOSK 비중','배달','배달 비중'];
+  const dayHeaders = ['일자','요일','순매출','일자별목표','달성률','전년매출','전년비','조수','조단가','POS','POS 비중','KIOSK','KIOSK 비중','DT','DT 비중','배달','배달 비중(전체매출 대비)'];
   dayHeaders.forEach((h,i)=>{ const c=ws2.getCell(2,2+i); c.value=h; styleCell(ws2,c,{fill:GRAYHEAD, font:{bold:true,size:10}}); });
   kpi.daily.forEach((d,idx)=>{
     const rr = 3+idx;
-    const dayChannelTotal = d.posNet + d.kioskNet + d.deliveryNet;
+    const dayChannelTotal = d.posNet + d.kioskNet + d.dtNet;
     const posShareDay = dayChannelTotal>0 ? d.posNet/dayChannelTotal : 0;
     const kioskShareDay = dayChannelTotal>0 ? d.kioskNet/dayChannelTotal : 0;
-    const deliveryShareDay = dayChannelTotal>0 ? d.deliveryNet/dayChannelTotal : 0;
-    const vals = [d.dateStr, d.weekdayText || ['월','화','수','목','금','토','일'][d.dow-1], d.net, d.target, d.achieveRate, d.lastYearNet, d.yoyGrowth, d.headcount, d.headcost, d.posNet, posShareDay, d.kioskNet, kioskShareDay, d.deliveryNet, deliveryShareDay];
-    const fmts = [null,null,'#,##0"원"','#,##0"원"','0.0%','#,##0"원"','+0.0%;-0.0%','#,##0"명"','#,##0"원"','#,##0"원"','0.0%','#,##0"원"','0.0%','#,##0"원"','0.0%'];
+    const dtShareDay = dayChannelTotal>0 ? d.dtNet/dayChannelTotal : 0;
+    const deliveryShareDay = d.net>0 ? d.deliveryNet/d.net : 0;
+    const vals = [d.dateStr, d.weekdayText || ['월','화','수','목','금','토','일'][d.dow-1], d.net, d.target, d.achieveRate, d.lastYearNet, d.yoyGrowth, d.headcount, d.headcost, d.posNet, posShareDay, d.kioskNet, kioskShareDay, d.dtNet, dtShareDay, d.deliveryNet, deliveryShareDay];
+    const fmts = [null,null,'#,##0"원"','#,##0"원"','0.0%','#,##0"원"','+0.0%;-0.0%','#,##0"명"','#,##0"원"','#,##0"원"','0.0%','#,##0"원"','0.0%','#,##0"원"','0.0%','#,##0"원"','0.0%'];
     vals.forEach((v,i)=>{
       const c = ws2.getCell(rr, 2+i);
       c.value = (v===null||v===undefined) ? '-' : v;
@@ -2265,8 +2498,8 @@ async function buildExcelBlob(kpi){
     const rrTotal = 3 + kpi.daily.length;
     const totalAchieve = kpi.cumTarget>0 ? kpi.cumNet/kpi.cumTarget : null;
     const totalYoy = kpi.cumLastYear>0 ? (kpi.cumNet-kpi.cumLastYear)/kpi.cumLastYear : null;
-    const totalVals = ['합계', '', kpi.cumNet, kpi.cumTarget, totalAchieve, kpi.cumLastYear, totalYoy, kpi.avgHeadcount, kpi.avgHeadcost, kpi.posTotal, posShare, kpi.kioskTotal, kioskShare, kpi.deliveryTotal, deliveryShare];
-    const totalFmts = [null,null,'#,##0"원"','#,##0"원"','0.0%','#,##0"원"','+0.0%;-0.0%','#,##0"명"','#,##0"원"','#,##0"원"','0.0%','#,##0"원"','0.0%','#,##0"원"','0.0%'];
+    const totalVals = ['합계', '', kpi.cumNet, kpi.cumTarget, totalAchieve, kpi.cumLastYear, totalYoy, kpi.avgHeadcount, kpi.avgHeadcost, kpi.posTotal, posShare, kpi.kioskTotal, kioskShare, kpi.dtTotal, dtShare, kpi.deliveryTotal, deliveryShare];
+    const totalFmts = [null,null,'#,##0"원"','#,##0"원"','0.0%','#,##0"원"','+0.0%;-0.0%','#,##0"명"','#,##0"원"','#,##0"원"','0.0%','#,##0"원"','0.0%','#,##0"원"','0.0%','#,##0"원"','0.0%'];
     totalVals.forEach((v,i)=>{
       const c = ws2.getCell(rrTotal, 2+i);
       c.value = (v===null||v===undefined||v==='') ? (i===1?'':'-') : v;
@@ -2281,9 +2514,9 @@ async function buildExcelBlob(kpi){
   ws3.getColumn(1).width = 2.5;
   ws3.getColumn(2).width = 22;
   ws3.getColumn(3).width = 30;
-  for(let c=4; c<=9; c++) ws3.getColumn(c).width = 14;
+  for(let c=4; c<=10; c++) ws3.getColumn(c).width = 14;
   function sectionHeader3(rr, text){
-    ws3.mergeCells(rr,2,rr,9);
+    ws3.mergeCells(rr,2,rr,10);
     const c = ws3.getCell(rr,2); c.value = text;
     styleCell(ws3, c, {fill:NAVY, font:WHITEBOLD, align:{horizontal:'left'}, border:false});
     ws3.getRow(rr).height = 20;
@@ -2355,14 +2588,16 @@ async function buildExcelBlob(kpi){
   }
   r3 += 1;
   sectionHeader3(r3, '판매 상위 TOP 20'); r3+=1;
-  tableHeaderRow3(r3, ['순위','상품명','판매수량','매출(VAT 별도)','비중'], 2); r3+=1;
+  tableHeaderRow3(r3, ['순위','상품명','수량','매출(VAT 별도)','비중','성장률','전년동기 수량','전년동기 매출','전년동기 비중'], 2); r3+=1;
   kpi.productTop20.forEach(x=>{
-    const vals = [x.rank, x.name, x.qty, x.net, x.share];
+    const growth = (x.lyNet!=null && x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null;
+    const vals = [x.rank, x.name, x.qty, x.net, x.share, growth, x.lyQty, x.lyNet, x.lyShare];
     vals.forEach((v,i)=>{
       const c = ws3.getCell(r3, 2+i);
-      c.value = v;
-      const fmt = [null,null,'#,##0','#,##0"원"','0.0%'][i];
-      styleCell(ws3, c, {font:{size:10}, numFmt: fmt, align:{horizontal: i===1?'left':'center'}});
+      c.value = (v===null||v===undefined) ? '-' : v;
+      const fmt = [null,null,'#,##0','#,##0"원"','0.0%','+0.0%;-0.0%','#,##0','#,##0"원"','0.0%'][i];
+      const color = (i===5) ? riseFallColor(growth) : null;
+      styleCell(ws3, c, {font:{size:10, color: color?{argb:color}:undefined}, numFmt: (v!=='-'&&fmt)?fmt:undefined, align:{horizontal: i===1?'left':'center'}});
     });
     r3 += 1;
   });
@@ -2370,12 +2605,12 @@ async function buildExcelBlob(kpi){
     const top20QtySum = kpi.productTop20.reduce((s,x)=>s+x.qty,0);
     const top20NetSum = kpi.productTop20.reduce((s,x)=>s+x.net,0);
     const top20Share = kpi.prodTotalNet>0 ? top20NetSum/kpi.prodTotalNet : 0;
-    const vals = ['', 'TOP 20 합계', top20QtySum, top20NetSum, top20Share];
+    const vals = ['', 'TOP 20 합계', top20QtySum, top20NetSum, top20Share, '', '', '', ''];
     vals.forEach((v,i)=>{
       const c = ws3.getCell(r3, 2+i);
       c.value = v;
-      const fmt = [null,null,'#,##0','#,##0"원"','0.0%'][i];
-      styleCell(ws3, c, {fill:GRAYHEAD, font:{bold:true,size:10}, numFmt: fmt, align:{horizontal: i===1?'left':'center'}});
+      const fmt = [null,null,'#,##0','#,##0"원"','0.0%',null,null,null,null][i];
+      styleCell(ws3, c, {fill:GRAYHEAD, font:{bold:true,size:10}, numFmt: (v!=='')?fmt:undefined, align:{horizontal: i===1?'left':'center'}});
     });
     r3 += 1;
   }
@@ -2385,32 +2620,34 @@ async function buildExcelBlob(kpi){
   ws3b.getColumn(1).width = 2.5;
   ws3b.getColumn(2).width = 8;
   ws3b.getColumn(3).width = 34;
-  for(let c=4; c<=6; c++) ws3b.getColumn(c).width = 14;
-  ws3b.mergeCells(2,2,2,6);
+  for(let c=4; c<=10; c++) ws3b.getColumn(c).width = 14;
+  ws3b.mergeCells(2,2,2,10);
   const ws3bTitle = ws3b.getCell(2,2);
   ws3bTitle.value = `전체 상품 매출 순위 (매출액 기준, 총 ${kpi.productAll.length}개)`;
   styleCell(ws3b, ws3bTitle, {fill:NAVY, font:WHITEBOLD, align:{horizontal:'left'}, border:false});
   ws3b.getRow(2).height = 20;
-  const ws3bHeaders = ['순위','상품명','판매수량','매출(VAT 별도)','비중'];
+  const ws3bHeaders = ['순위','상품명','수량','매출(VAT 별도)','비중','성장률','전년동기 수량','전년동기 매출','전년동기 비중'];
   ws3bHeaders.forEach((h,i)=>{ const c = ws3b.getCell(4, 2+i); c.value=h; styleCell(ws3b, c, {fill:GRAYHEAD, font:{bold:true,size:10}}); });
   kpi.productAll.forEach((x,i)=>{
     const rr = 5+i;
-    const vals = [x.rank, x.name, x.qty, x.net, x.share];
+    const growth = (x.lyNet!=null && x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null;
+    const vals = [x.rank, x.name, x.qty, x.net, x.share, growth, x.lyQty, x.lyNet, x.lyShare];
     vals.forEach((v,i2)=>{
       const c = ws3b.getCell(rr, 2+i2);
-      c.value = v;
-      const fmt = [null,null,'#,##0','#,##0"원"','0.0%'][i2];
-      styleCell(ws3b, c, {font:{size:10}, numFmt: fmt, align:{horizontal: i2===1?'left':'center'}});
+      c.value = (v===null||v===undefined) ? '-' : v;
+      const fmt = [null,null,'#,##0','#,##0"원"','0.0%','+0.0%;-0.0%','#,##0','#,##0"원"','0.0%'][i2];
+      const color = (i2===5) ? riseFallColor(growth) : null;
+      styleCell(ws3b, c, {font:{size:10, color: color?{argb:color}:undefined}, numFmt: (v!=='-'&&fmt)?fmt:undefined, align:{horizontal: i2===1?'left':'center'}});
     });
   });
   {
     const rrTotal = 5 + kpi.productAll.length;
-    const totalVals = ['', '합계', kpi.prodTotalQty, kpi.prodTotalNet, kpi.prodTotalNet>0?1:0];
+    const totalVals = ['', '합계', kpi.prodTotalQty, kpi.prodTotalNet, kpi.prodTotalNet>0?1:0, '', '', '', ''];
     totalVals.forEach((v,i2)=>{
       const c = ws3b.getCell(rrTotal, 2+i2);
       c.value = v;
-      const fmt = [null,null,'#,##0','#,##0"원"','0.0%'][i2];
-      styleCell(ws3b, c, {fill:GRAYHEAD, font:{bold:true,size:10}, numFmt: fmt, align:{horizontal: i2===1?'left':'center'}});
+      const fmt = [null,null,'#,##0','#,##0"원"','0.0%',null,null,null,null][i2];
+      styleCell(ws3b, c, {fill:GRAYHEAD, font:{bold:true,size:10}, numFmt: (v!=='')?fmt:undefined, align:{horizontal: i2===1?'left':'center'}});
     });
   }
 
