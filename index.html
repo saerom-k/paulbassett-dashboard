@@ -106,6 +106,12 @@
     content:"선택"; position:absolute; top:12px; right:14px; font-size:.62rem;
     letter-spacing:.08em; color: var(--text-mute); font-family:'Noto Sans KR', sans-serif;
   }
+  .drop.monthly:not(.filled){ background: #E7E7EA; border-color: #C9C9CE; }
+  .drop.monthly:not(.filled):hover{ background: var(--accent-soft); border-color: var(--accent); }
+  .drop.monthly::before{
+    content:"월 1회"; position:absolute; top:12px; right:14px; font-size:.62rem;
+    letter-spacing:.04em; color: var(--text-dim); font-family:'Noto Sans KR', sans-serif; font-weight:700;
+  }
   .drop .idx{ font-family:'Noto Sans KR', sans-serif; font-size:.72rem; color: var(--accent); letter-spacing:.06em; font-weight:700; }
   .drop .name{ font-weight:700; font-size:.92rem; margin:5px 0 4px; color: var(--text); padding-right:34px; white-space:nowrap; overflow:hidden; text-overflow:clip; }
   .drop .desc{ font-size:.78rem; color: var(--text-mute); line-height:1.45; }
@@ -304,7 +310,7 @@
         <div class="status" data-slot="cur"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="cur">
       </label>
-      <label class="drop optional" id="drop-prev">
+      <label class="drop optional monthly" id="drop-prev">
         <div class="idx">1-2</div>
         <div class="name">일자별종합매출현황 (전년 동월)</div>
         <div class="desc">작년 같은 달과 매출을 비교하기 위한 데이터입니다.</div>
@@ -325,7 +331,7 @@
         <div class="status" data-slot="prod"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="prod">
       </label>
-      <label class="drop optional" id="drop-prodPrev">
+      <label class="drop optional monthly" id="drop-prodPrev">
         <div class="idx">1-5</div>
         <div class="name">상품별매출내역조회_일자별(전년 동월)</div>
         <div class="desc">카테고리별 매출(대분류·소분류·상품 상세)의 전년 대비 비교에 사용됩니다.</div>
@@ -339,7 +345,7 @@
         <div class="status" data-slot="waste"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="waste">
       </label>
-      <label class="drop optional" id="drop-target">
+      <label class="drop optional monthly" id="drop-target">
         <div class="idx">1-7</div>
         <div class="name">목표매출 (본사 배포 시트)</div>
         <div class="desc">파일을 그대로 업로드하면 매장을 자동으로 찾아 매칭합니다.</div>
