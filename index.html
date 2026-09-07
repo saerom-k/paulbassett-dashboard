@@ -2832,43 +2832,12 @@ function toggleChangelog(){
 
 /* ============================================================
    10. 제안 · 아이디어 게시판 (모두가 보는 공용 익명 게시판)
-   jsonblob.com에 저장합니다. 최초 배포 시에는 아직 저장 공간(blob)이 없어서,
-   IDEA_BOARD_BLOB_ID가 비어있으면 이 브라우저가 새로 하나 만들고 그 ID를
-   화면에 안내합니다 — 그 ID를 이 코드에 한 번 붙여넣어 재배포하면, 그 다음부터는
-   모든 사람이 같은 게시판을 보고 씁니다(최초 1회만 필요한 설정).
+   회사 사내망에서 jsonblob/extendsclass 같은 "스토리지"류 외부 서비스가
+   막혀있어(방화벽), 구글 계정은 이미 업무용으로 쓰고 있는 점을 활용해
+   Google Apps Script 웹앱(구글 도메인)을 저장소로 사용합니다.
+   IDEA_APPS_SCRIPT_URL에 배포된 웹앱 주소를 넣어야 동작합니다.
    ============================================================ */
-const IDEA_BOARD_BLOB_ID = ''; // 최초 1회 생성된 ID를 여기 붙여넣으세요 (예: 'jsonblob:8f1e2a3b-...')
-const IDEA_PROVIDERS = [
-  {
-    name: 'jsonblob',
-    createUrl: 'https://jsonblob.com/api/jsonBlob',
-    itemUrl: id => `https://jsonblob.com/api/jsonBlob/${id}`,
-    parseCreateId: async (res) => {
-      const loc = res.headers.get('Location') || '';
-      const id = loc.split('/').pop();
-      if(!id) throw new Error('jsonblob: 응답에서 ID를 찾을 수 없음(Location 헤더 없음)');
-      return id;
-    },
-  },
-  {
-    name: 'extendsclass',
-    createUrl: 'https://json.extendsclass.com/bin',
-    itemUrl: id => `https://json.extendsclass.com/bin/${id}`,
-    parseCreateId: async (res) => {
-      const body = await res.json();
-      const id = body && body.id;
-      if(!id) throw new Error('extendsclass: 응답 본문에서 ID를 찾을 수 없음');
-      return id;
-    },
-  },
-];
-let ideaProviderName = null;
-let ideaBoardBlobId = '';
-if(IDEA_BOARD_BLOB_ID.includes(':')){
-  const [p, id] = IDEA_BOARD_BLOB_ID.split(':');
-  ideaProviderName = p; ideaBoardBlobId = id;
-}
-function getIdeaProvider(name){ return IDEA_PROVIDERS.find(p=>p.name===name); }
+const IDEA_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxItX9M9pPKznHdhuB8tz3qur0vmipEKVQBGP7-ec2fij8OjNylwpTBn_-q-jzCWcVH/exec';
 
 function escapeIdea(s){
   return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2891,13 +2860,12 @@ function renderIdeaList(notes){
 }
 async function loadIdeaBoard(){
   const listEl = document.getElementById('ideaList');
-  if(!ideaBoardBlobId){
-    listEl.innerHTML = '<div class="empty-hint">게시판을 처음 준비하고 있어요. "등록" 버튼을 한 번 눌러 시작해주세요.</div>';
+  if(!IDEA_APPS_SCRIPT_URL){
+    listEl.innerHTML = '<div class="empty-hint">게시판 저장소 설정이 아직 완료되지 않았습니다. (운영자 설정 필요)</div>';
     return;
   }
   try{
-    const provider = getIdeaProvider(ideaProviderName);
-    const res = await fetch(provider.itemUrl(ideaBoardBlobId), { cache:'no-store' });
+    const res = await fetch(`${IDEA_APPS_SCRIPT_URL}?action=list`, { cache:'no-store' });
     if(!res.ok) throw new Error('HTTP '+res.status);
     const data = await res.json();
     renderIdeaList(data.notes||[]);
@@ -2911,47 +2879,23 @@ async function submitIdea(){
   const btn = document.getElementById('ideaSubmitBtn');
   const text = input.value.trim();
   if(!text) return;
+  if(!IDEA_APPS_SCRIPT_URL){
+    alert('게시판 저장소 설정이 아직 완료되지 않았습니다. 운영지원팀에 문의해주세요.');
+    return;
+  }
   btn.disabled = true; btn.textContent = '등록 중...';
   const dateStr = new Date().toLocaleString('ko-KR');
   try{
-    if(!ideaBoardBlobId){
-      // 최초 1회: 이 브라우저가 게시판을 새로 만듭니다. 서비스 하나가 안 되면 다음 서비스로 시도합니다.
-      const allErrs = [];
-      for(const provider of IDEA_PROVIDERS){
-        try{
-          const res = await fetch(provider.createUrl, {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ notes:[{text, date:dateStr}] }),
-          });
-          if(!res.ok) throw new Error(provider.name+': 생성 실패 HTTP '+res.status);
-          const newId = await provider.parseCreateId(res);
-          ideaProviderName = provider.name;
-          ideaBoardBlobId = newId;
-          alert(`게시판이 처음 만들어졌습니다!\n\n운영자에게 아래 내용을 전달해서 코드에 한 번만 저장해두면, 그 다음부터 모든 사람이 같은 게시판을 보게 됩니다.\n\nID: ${provider.name}:${newId}`);
-          input.value = '';
-          await loadIdeaBoard();
-          return;
-        }catch(err){
-          console.warn('[아이디어 게시판] 생성 실패 —', provider.name, err);
-          allErrs.push(`${provider.name}: ${err.message}`);
-        }
-      }
-      throw new Error('모든 저장소 서비스 실패 — ' + allErrs.join(' / '));
-    }
-    const provider = getIdeaProvider(ideaProviderName);
-    const getRes = await fetch(provider.itemUrl(ideaBoardBlobId), { cache:'no-store' });
-    if(!getRes.ok) throw new Error('조회 실패 HTTP '+getRes.status);
-    const data = await getRes.json();
-    const notes = data.notes || [];
-    notes.push({ text, date: dateStr });
-    while(notes.length > 300) notes.shift(); // 너무 많이 쌓이지 않도록 오래된 것부터 정리
-    const putRes = await fetch(provider.itemUrl(ideaBoardBlobId), {
-      method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ notes }),
+    // Apps Script 웹앱은 Content-Type:application/json으로 보내면 브라우저가 사전 확인(preflight)
+    // 요청을 보내는데 Apps Script가 이를 지원하지 않아 막힐 수 있어, text/plain으로 보내고
+    // 서버(Apps Script) 쪽에서 그 내용을 그대로 JSON으로 해석하도록 합니다.
+    const res = await fetch(IDEA_APPS_SCRIPT_URL, {
+      method:'POST', headers:{'Content-Type':'text/plain'},
+      body: JSON.stringify({ action:'add', text, date:dateStr }),
     });
-    if(!putRes.ok) throw new Error('저장 실패 HTTP '+putRes.status);
+    if(!res.ok) throw new Error('등록 실패 HTTP '+res.status);
     input.value = '';
-    renderIdeaList(notes);
+    await loadIdeaBoard();
   }catch(e){
     console.error('[아이디어 게시판]', e);
     alert('등록 중 문제가 발생했어요.\n\n오류 내용: ' + e.message + '\n\n이 화면을 캡처해서 알려주시면 바로 고쳐드릴게요.');
@@ -2969,18 +2913,12 @@ async function deleteIdea(index){
   if(!pw || pw.toLowerCase() !== IDEA_ADMIN_PASSWORD.toLowerCase()){ alert('비밀번호가 올바르지 않습니다.'); return; }
   if(!confirm('이 의견을 삭제할까요? 삭제하면 되돌릴 수 없습니다.')) return;
   try{
-    const provider = getIdeaProvider(ideaProviderName);
-    const getRes = await fetch(provider.itemUrl(ideaBoardBlobId), { cache:'no-store' });
-    if(!getRes.ok) throw new Error('조회 실패 HTTP '+getRes.status);
-    const data = await getRes.json();
-    const notes = data.notes || [];
-    notes.splice(index, 1);
-    const putRes = await fetch(provider.itemUrl(ideaBoardBlobId), {
-      method:'PUT', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ notes }),
+    const res = await fetch(IDEA_APPS_SCRIPT_URL, {
+      method:'POST', headers:{'Content-Type':'text/plain'},
+      body: JSON.stringify({ action:'delete', index }),
     });
-    if(!putRes.ok) throw new Error('저장 실패 HTTP '+putRes.status);
-    renderIdeaList(notes);
+    if(!res.ok) throw new Error('삭제 실패 HTTP '+res.status);
+    await loadIdeaBoard();
   }catch(e){
     console.error('[아이디어 게시판] 삭제 실패', e);
     alert('삭제 중 문제가 발생했어요.\n\n오류 내용: ' + e.message);
