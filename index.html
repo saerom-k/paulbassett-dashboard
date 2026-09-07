@@ -2793,7 +2793,7 @@ const CHANGELOG = [
     '사이즈별(STANDARD / GRAND / VENTI) 판매 금액·비중 그래프 추가',
   ]},
   { date: '2026-09-04', items: [
-    '전체 매장 순위(전월 마감 기준: 매출 순위·전년비 성장률 순위) 추가',
+    '전체 매장 순위(전월 기준: 매출 순위·전년비 성장률 순위) 추가',
     '전년 대비 성장·부진 소분류/상품 TOP 5 추가',
     '주요상품 실적, 신메뉴 실적 화면 추가',
     '폐기 사유별 집계, 요일별 폐기 금액 추이 추가',
@@ -2836,9 +2836,38 @@ function toggleChangelog(){
    화면에 안내합니다 — 그 ID를 이 코드에 한 번 붙여넣어 재배포하면, 그 다음부터는
    모든 사람이 같은 게시판을 보고 씁니다(최초 1회만 필요한 설정).
    ============================================================ */
-const IDEA_BOARD_BLOB_ID = ''; // 최초 1회 생성된 ID를 여기 붙여넣으세요 (예: '8f1e2a3b-...')
-const IDEA_BOARD_BASE = 'https://jsonblob.com/api/jsonBlob';
-let ideaBoardBlobId = IDEA_BOARD_BLOB_ID;
+const IDEA_BOARD_BLOB_ID = ''; // 최초 1회 생성된 ID를 여기 붙여넣으세요 (예: 'jsonblob:8f1e2a3b-...')
+const IDEA_PROVIDERS = [
+  {
+    name: 'jsonblob',
+    createUrl: 'https://jsonblob.com/api/jsonBlob',
+    itemUrl: id => `https://jsonblob.com/api/jsonBlob/${id}`,
+    parseCreateId: async (res) => {
+      const loc = res.headers.get('Location') || '';
+      const id = loc.split('/').pop();
+      if(!id) throw new Error('jsonblob: 응답에서 ID를 찾을 수 없음(Location 헤더 없음)');
+      return id;
+    },
+  },
+  {
+    name: 'extendsclass',
+    createUrl: 'https://json.extendsclass.com/bin',
+    itemUrl: id => `https://json.extendsclass.com/bin/${id}`,
+    parseCreateId: async (res) => {
+      const body = await res.json();
+      const id = body && body.id;
+      if(!id) throw new Error('extendsclass: 응답 본문에서 ID를 찾을 수 없음');
+      return id;
+    },
+  },
+];
+let ideaProviderName = null;
+let ideaBoardBlobId = '';
+if(IDEA_BOARD_BLOB_ID.includes(':')){
+  const [p, id] = IDEA_BOARD_BLOB_ID.split(':');
+  ideaProviderName = p; ideaBoardBlobId = id;
+}
+function getIdeaProvider(name){ return IDEA_PROVIDERS.find(p=>p.name===name); }
 
 function escapeIdea(s){
   return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2866,13 +2895,14 @@ async function loadIdeaBoard(){
     return;
   }
   try{
-    const res = await fetch(`${IDEA_BOARD_BASE}/${ideaBoardBlobId}`, { cache:'no-store' });
+    const provider = getIdeaProvider(ideaProviderName);
+    const res = await fetch(provider.itemUrl(ideaBoardBlobId), { cache:'no-store' });
     if(!res.ok) throw new Error('HTTP '+res.status);
     const data = await res.json();
     renderIdeaList(data.notes||[]);
   }catch(e){
-    console.warn('[아이디어 게시판] 불러오기 실패', e.message);
-    listEl.innerHTML = '<div class="empty-hint">게시판을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
+    console.warn('[아이디어 게시판] 불러오기 실패', e);
+    listEl.innerHTML = `<div class="empty-hint">게시판을 불러오지 못했습니다. (${escapeIdea(e.message)})</div>`;
   }
 }
 async function submitIdea(){
@@ -2881,31 +2911,40 @@ async function submitIdea(){
   const text = input.value.trim();
   if(!text) return;
   btn.disabled = true; btn.textContent = '등록 중...';
+  const dateStr = new Date().toLocaleString('ko-KR');
   try{
-    const dateStr = new Date().toLocaleString('ko-KR');
     if(!ideaBoardBlobId){
-      // 최초 1회: 이 브라우저가 게시판(blob)을 새로 만듭니다.
-      const res = await fetch(IDEA_BOARD_BASE, {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ notes:[{text, date:dateStr}] }),
-      });
-      if(!res.ok) throw new Error('생성 실패 HTTP '+res.status);
-      const loc = res.headers.get('Location') || '';
-      const newId = loc.split('/').pop();
-      if(!newId) throw new Error('새 게시판 ID를 확인하지 못했습니다.');
-      ideaBoardBlobId = newId;
-      alert(`게시판이 처음 만들어졌습니다!\n\n운영자에게 아래 ID를 전달해서 코드에 한 번만 저장해두면, 그 다음부터 모든 사람이 같은 게시판을 보게 됩니다.\n\nID: ${newId}`);
-      input.value = '';
-      await loadIdeaBoard();
-      return;
+      // 최초 1회: 이 브라우저가 게시판을 새로 만듭니다. 서비스 하나가 안 되면 다음 서비스로 시도합니다.
+      let lastErr = null;
+      for(const provider of IDEA_PROVIDERS){
+        try{
+          const res = await fetch(provider.createUrl, {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ notes:[{text, date:dateStr}] }),
+          });
+          if(!res.ok) throw new Error(provider.name+': 생성 실패 HTTP '+res.status);
+          const newId = await provider.parseCreateId(res);
+          ideaProviderName = provider.name;
+          ideaBoardBlobId = newId;
+          alert(`게시판이 처음 만들어졌습니다!\n\n운영자에게 아래 내용을 전달해서 코드에 한 번만 저장해두면, 그 다음부터 모든 사람이 같은 게시판을 보게 됩니다.\n\nID: ${provider.name}:${newId}`);
+          input.value = '';
+          await loadIdeaBoard();
+          return;
+        }catch(err){
+          console.warn('[아이디어 게시판] 생성 실패 —', provider.name, err);
+          lastErr = err;
+        }
+      }
+      throw lastErr || new Error('모든 저장소 서비스에 연결하지 못했습니다.');
     }
-    const getRes = await fetch(`${IDEA_BOARD_BASE}/${ideaBoardBlobId}`, { cache:'no-store' });
+    const provider = getIdeaProvider(ideaProviderName);
+    const getRes = await fetch(provider.itemUrl(ideaBoardBlobId), { cache:'no-store' });
     if(!getRes.ok) throw new Error('조회 실패 HTTP '+getRes.status);
     const data = await getRes.json();
     const notes = data.notes || [];
     notes.push({ text, date: dateStr });
     while(notes.length > 300) notes.shift(); // 너무 많이 쌓이지 않도록 오래된 것부터 정리
-    const putRes = await fetch(`${IDEA_BOARD_BASE}/${ideaBoardBlobId}`, {
+    const putRes = await fetch(provider.itemUrl(ideaBoardBlobId), {
       method:'PUT', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ notes }),
     });
@@ -2913,8 +2952,8 @@ async function submitIdea(){
     input.value = '';
     renderIdeaList(notes);
   }catch(e){
-    console.error('[아이디어 게시판]', e.message);
-    alert('등록 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.');
+    console.error('[아이디어 게시판]', e);
+    alert('등록 중 문제가 발생했어요.\n\n오류 내용: ' + e.message + '\n\n이 화면을 캡처해서 알려주시면 바로 고쳐드릴게요.');
   }finally{
     btn.disabled = false; btn.textContent = '등록';
   }
@@ -2929,20 +2968,21 @@ async function deleteIdea(index){
   if(!pw || pw.toLowerCase() !== IDEA_ADMIN_PASSWORD.toLowerCase()){ alert('비밀번호가 올바르지 않습니다.'); return; }
   if(!confirm('이 의견을 삭제할까요? 삭제하면 되돌릴 수 없습니다.')) return;
   try{
-    const getRes = await fetch(`${IDEA_BOARD_BASE}/${ideaBoardBlobId}`, { cache:'no-store' });
+    const provider = getIdeaProvider(ideaProviderName);
+    const getRes = await fetch(provider.itemUrl(ideaBoardBlobId), { cache:'no-store' });
     if(!getRes.ok) throw new Error('조회 실패 HTTP '+getRes.status);
     const data = await getRes.json();
     const notes = data.notes || [];
     notes.splice(index, 1);
-    const putRes = await fetch(`${IDEA_BOARD_BASE}/${ideaBoardBlobId}`, {
+    const putRes = await fetch(provider.itemUrl(ideaBoardBlobId), {
       method:'PUT', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ notes }),
     });
     if(!putRes.ok) throw new Error('저장 실패 HTTP '+putRes.status);
     renderIdeaList(notes);
   }catch(e){
-    console.error('[아이디어 게시판] 삭제 실패', e.message);
-    alert('삭제 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.');
+    console.error('[아이디어 게시판] 삭제 실패', e);
+    alert('삭제 중 문제가 발생했어요.\n\n오류 내용: ' + e.message);
   }
 }
 loadIdeaBoard();
