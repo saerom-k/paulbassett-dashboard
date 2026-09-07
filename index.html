@@ -138,6 +138,37 @@
   .store-box select:focus{ outline:none; border-color: var(--accent); }
   .store-tag{ font-size:.74rem; font-family:'Noto Sans KR', sans-serif; padding:4px 10px; border-radius:20px; font-weight:700; }
   .store-tag.auto{ background: #E9F9EF; color: var(--positive); }
+  .changelog-toggle{
+    background:none; border:none; color:var(--info); font-family:'Noto Sans KR',sans-serif; font-size:.86rem;
+    font-weight:700; cursor:pointer; padding:0; margin-bottom:16px; display:inline-flex; align-items:center; gap:5px;
+  }
+  .changelog-toggle:hover{ text-decoration:underline; }
+  .changelog-panel{
+    border:1.5px solid var(--border); border-radius:12px; padding:18px 20px; margin-bottom:20px; background:#fff;
+    max-height:360px; overflow-y:auto;
+  }
+  .changelog-date{ font-family:'Noto Sans KR',sans-serif; font-weight:800; font-size:.92rem; color:var(--text); margin:14px 0 8px; }
+  .changelog-date:first-child{ margin-top:0; }
+  .changelog-panel ul{ margin:0 0 0 4px; padding-left:16px; }
+  .changelog-panel li{ font-size:.86rem; color:var(--text-dim); line-height:1.7; }
+  .idea-box{ border:1.5px solid var(--border); border-radius:12px; padding:18px 20px; margin-bottom:20px; background:#fff; }
+  .idea-title{ font-family:'Noto Sans KR',sans-serif; font-weight:800; font-size:.95rem; color:var(--text); margin-bottom:12px; }
+  .idea-sub{ font-weight:500; font-size:.78rem; color:var(--text-mute); }
+  .idea-input-row{ display:flex; gap:10px; align-items:flex-end; margin-bottom:14px; flex-wrap:wrap; }
+  .idea-input-row textarea{
+    flex:1; min-width:220px; min-height:44px; max-height:120px; resize:vertical; padding:10px 12px;
+    border:1.5px solid var(--border); border-radius:8px; font-family:'Noto Sans KR',sans-serif; font-size:.86rem; color:var(--text);
+  }
+  .idea-input-row textarea:focus{ outline:none; border-color:var(--accent); }
+  .idea-list{ display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto; }
+  .idea-item{ padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); }
+  .idea-item .idea-text{ font-size:.86rem; color:var(--text); white-space:pre-wrap; word-break:break-word; }
+  .idea-item .idea-date{ font-size:.72rem; color:var(--text-mute); margin-top:4px; }
+  .idea-delete-btn{
+    flex-shrink:0; background:none; border:none; color:var(--text-mute); cursor:pointer; font-size:.8rem;
+    padding:2px 4px; line-height:1;
+  }
+  .idea-delete-btn:hover{ color:var(--negative); }
   .saved-box{ border:1.5px solid var(--info); border-radius:12px; padding:16px 18px; margin-bottom:20px; background:#fff; }
   .saved-title{ font-size:.86rem; font-weight:800; color:var(--info); margin-bottom:12px; }
   .saved-list{ display:flex; flex-direction:column; gap:8px; }
@@ -272,6 +303,22 @@
   .pill{ display:inline-block; padding:2px 8px; border-radius:20px; background: var(--surface-3); font-size:.68rem; color: var(--text-dim); font-family:'Noto Sans KR', sans-serif; font-weight:600; }
 
   .empty-hint{ color: var(--text-mute); font-size:.85rem; padding:20px; text-align:center; }
+  .top-search-wrap{ position:relative; display:inline-flex; align-items:center; }
+  .top-search-wrap::before{ content:"🔍"; position:absolute; left:10px; font-size:.78rem; pointer-events:none; }
+  .top-search{
+    padding:8px 12px 8px 30px; border:2px solid var(--accent); border-radius:20px; font-family:'Noto Sans KR',sans-serif;
+    font-size:.82rem; width:140px; background:#fff; color:var(--text);
+  }
+  .top-search:focus{ outline:none; border-color:var(--accent); width:190px; transition:width .15s; }
+  .search-box{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .search-box .search-input-wrap{ position:relative; flex:1; max-width:360px; }
+  .search-box .search-input-wrap::before{ content:"🔍"; position:absolute; left:14px; top:50%; transform:translateY(-50%); font-size:.9rem; pointer-events:none; }
+  .search-box input{
+    width:100%; padding:10px 14px 10px 38px; border:2px solid var(--accent); border-radius:8px;
+    font-family:'Noto Sans KR',sans-serif; font-size:.9rem; color:var(--text); background:#fff;
+  }
+  .search-box input:focus{ outline:none; border-color:var(--accent); }
+  .search-count{ font-size:.82rem; color:var(--text-mute); }
 
   .chart-legend{ display:flex; gap:18px; font-size:.78rem; color: var(--text-dim); margin-bottom:10px; flex-wrap:wrap; }
   .chart-legend span{ display:inline-flex; align-items:center; gap:6px; font-weight:600; }
@@ -301,48 +348,62 @@
     </div>
     <p class="subtitle">spharos에서 내려받은 raw 파일을 그대로 업로드해주세요(드래그해서 놓아도 됩니다).<br>당월 실적·달성률·카테고리별 매출·폐기 현황까지 자동으로 계산해서 보여드립니다.</p>
 
+    <button id="changelogToggle" class="changelog-toggle" onclick="toggleChangelog()">
+      <span id="changelogArrow">▸</span> 업데이트 사항
+    </button>
+    <div id="changelogPanel" class="changelog-panel" style="display:none"></div>
+
+    <div class="idea-box">
+      <div class="idea-title">💡 제안 · 아이디어 게시판 <span class="idea-sub">(이름 없이 남길 수 있고, 남긴 내용은 모두에게 보여요)</span></div>
+      <div class="idea-input-row">
+        <textarea id="ideaInput" maxlength="300" placeholder="대시보드에 바라는 점, 아이디어를 자유롭게 남겨주세요 (익명)"></textarea>
+        <button class="btn save small" id="ideaSubmitBtn" onclick="submitIdea()">등록</button>
+      </div>
+      <div id="ideaList" class="idea-list"><div class="empty-hint">불러오는 중...</div></div>
+    </div>
+
     <div id="savedListBox"></div>
 
     <div class="upload-grid">
       <label class="drop required" id="drop-cur">
         <div class="idx">1-1</div>
         <div class="name">일자별종합매출현황 (당월)</div>
-        <div class="desc">일별 매출, 조수, 조단가, 배달 매출의 원천 데이터입니다.</div>
+        <div class="desc">분석하고 싶은 기간의 데이터를 다운받아 넣어주세요.<br>일별 매출, 조수, 조단가, 배달 매출의 원천 데이터입니다.</div>
         <div class="status" data-slot="cur"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="cur">
       </label>
       <label class="drop optional monthly" id="drop-prev">
         <div class="idx">1-2</div>
         <div class="name">일자별종합매출현황 (전년 동월)</div>
-        <div class="desc">작년 같은 달과 매출을 비교하기 위한 데이터입니다.</div>
+        <div class="desc">전년 동월 1일~말일까지의 데이터를 다운받아 넣어주세요.<br>작년 같은 달과 매출을 비교하기 위한 데이터입니다.</div>
         <div class="status" data-slot="prev"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="prev">
       </label>
       <label class="drop optional" id="drop-pos">
         <div class="idx">1-3</div>
         <div class="name">POS별매출조회</div>
-        <div class="desc">POS·KIOSK 채널 매출 구분 + 매장명 자동 인식에 사용됩니다.</div>
+        <div class="desc">분석하고 싶은 기간의 데이터를 다운받아 넣어주세요.<br>POS·KIOSK 채널 매출 구분 + 매장명 자동 인식에 사용됩니다.</div>
         <div class="status" data-slot="pos"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="pos">
       </label>
       <label class="drop optional" id="drop-prod">
         <div class="idx">1-4</div>
         <div class="name">상품별매출내역조회_일자별(당월)</div>
-        <div class="desc">카테고리 집계와 상품 판매 TOP 20의 원천 데이터입니다.</div>
+        <div class="desc">분석하고 싶은 기간의 데이터를 다운받아 넣어주세요.<br>카테고리 집계와 상품 판매 TOP 20의 원천 데이터입니다.</div>
         <div class="status" data-slot="prod"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="prod">
       </label>
       <label class="drop optional monthly" id="drop-prodPrev">
         <div class="idx">1-5</div>
         <div class="name">상품별매출내역조회_일자별(전년 동월)</div>
-        <div class="desc">카테고리별 매출(대분류·소분류·상품 상세)의 전년 대비 비교에 사용됩니다.</div>
+        <div class="desc">전년 동월 1일~말일까지의 데이터를 다운받아 넣어주세요.<br>카테고리별 매출(대분류·소분류·상품 상세)의 전년 대비 비교에 사용됩니다.</div>
         <div class="status" data-slot="prodPrev"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="prodPrev">
       </label>
       <label class="drop optional" id="drop-waste">
         <div class="idx">1-6</div>
         <div class="name">재고폐기등록</div>
-        <div class="desc">폐기 TOP 20 및 폐기율 계산용. 없으면 폐기 현황이 비어있게 표시됩니다.</div>
+        <div class="desc">분석하고 싶은 기간의 데이터를 다운받아 넣어주세요.<br>폐기 TOP 20 및 폐기율 계산용. 없으면 폐기 현황이 비어있게 표시됩니다.</div>
         <div class="status" data-slot="waste"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="waste">
       </label>
@@ -386,7 +447,7 @@
       <span id="runMsg"></span>
     </div>
 
-    <p class="footer-note">대시보드 관련 문의<br>운영지원팀 김새롬 | ☎ 02-2056-4295 | ✉ julysr@maeil.com</p>
+    <p class="footer-note">대시보드 관련 문의<br>운영지원팀 김새롬 | ☎ 02-2056-4295 | ✉ <a href="https://mail.google.com/mail/?view=cm&fs=1&to=julysr@maeil.com" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">julysr@maeil.com</a></p>
   </div>
 </div>
 
@@ -456,6 +517,42 @@ const MILLDO_EXCLUDE_CODES = new Set([
   '273448','273470',          // 초코아몬드 플로랑탱
   '273446','273468',          // 하트팔미에
 ]);
+// 주요상품 / 신메뉴 / 룽고·아메리카노·디카페인 / 사이즈 집계 — 아이템코드 기준 공식 제품군 마스터
+// (본사 C메뉴 마스터에서 추출: 코드 -> [제품군명, 사이즈]). 상품명 문자열 매칭보다 훨씬 정확합니다.
+const CODE_MASTER = {"595":["",""],"170039":["밀크 아이스크림",""],"170040":["밀크 아이스크림",""],"179180":["아이스크림 토핑",""],"179437":["아이스크림 카페 라떼","STANDARD"],"179438":["아이스크림 카페 라떼","GRAND"],"179703":["밀크 소프트 아포가토",""],"181128":["디카페인 아이스크림 카페라떼","GRAND"],"181129":["디카페인 아이스크림 카페라떼","STANDARD"],"181142":["디카페인 밀크소프트 아포가토",""],"181528":["초코퍼지 토핑 아이스크림",""],"182679":["커피 토핑 아이스크림",""],"183064":["딸기 후르츠 토핑 아이스크림",""],"183065":["블루베리 후르츠 토핑 아이스크림",""],"635":["",""],"648":["초당옥수수 아이스크림",""],"649":["초당옥수수 아이스크림",""],"662":["초콜릿 아이스크림",""],"722":["라벤더 아이스크림",""],"729":["라벤더 아이스크림",""],"180588":["제주말차 아이스크림",""],"180589":["제주말차 아이스크림",""],"180598":["제주말차 아이스크림",""],"180838":["초콜릿 아이스크림",""],"180839":["초콜릿 아이스크림",""],"180843":["초당옥수수 아이스크림 카페 라떼","STANDARD"],"180844":["초당옥수수 아이스크림 카페 라떼","GRAND"],"180845":["초당옥수수 아이스크림",""],"180846":["초당옥수수 아이스크림",""],"180847":["초당옥수수 아이스크림",""],"180848":["초당옥수수 아이스크림",""],"180849":["초당옥수수 아이스크림",""],"180850":["초당옥수수 아이스크림",""],"180987":["초콜릿 아이스크림",""],"181032":["제주말차 아이스크림 라떼","STANDARD"],"181033":["제주말차 아이스크림 라떼","GRAND"],"181516":["초콜릿아이스크림라떼","STANDARD"],"181517":["초콜릿아이스크림라떼","GRAND"],"183020":["라벤더 아이스크림",""],"183021":["라벤더 아이스크림",""],"183022":["라벤더 아이스크림",""],"183605":["라벤더 아이스크림 블루베리 라떼","STANDARD"],"183694":["라벤더 아이스크림 블루베리 라떼","GRAND"],"183699":["라벤더 아이스크림",""],"183700":["라벤더 아이스크림",""],"183701":["라벤더 아이스크림",""],"183917":["초당 옥수수 아이스크림 토핑컵",""],"270494":["시그니처블렌드","GRAND"],"270495":["시그니처블렌드","GRAND"],"320157":["디카페인블렌드",""],"320240":["푸릇프룻 블렌드",""],"271217":["네스프레소 호환 캡슐",""],"271218":["네스프레소 호환 캡슐",""],"271219":["네스프레소 호환 캡슐",""],"271220":["네스프레소 호환 캡슐",""],"271221":["네스프레소 호환 캡슐",""],"272727":["네스프레소 호환 캡슐",""],"183888":["드립백 셀렉션",""],"272726":["바리스타 파우치",""],"273190":["드립백 푸릇프룻",""],"273240":["드립백 시그니처블렌드",""],"273241":["드립백 에티오피아",""],"273242":["드립백 과테말라",""],"273243":["드립백 디카페인블렌드",""],"557":["우유변경",""],"558":["우유변경",""],"573":["",""],"633":["",""],"634":["",""],"643":["우유변경",""],"644":["",""],"665":["",""],"666":["",""],"667":["",""],"668":["",""],"672":["",""],"674":["",""],"675":["",""],"676":["",""],"677":["",""],"678":["",""],"679":["",""],"680":["",""],"681":["",""],"684":["",""],"685":["",""],"686":["",""],"687":["",""],"691":["",""],"692":["",""],"694":["",""],"695":["",""],"696":["",""],"697":["",""],"698":["",""],"700":["",""],"702":["",""],"703":["",""],"704":["",""],"705":["",""],"706":["",""],"707":["",""],"708":["",""],"709":["",""],"710":["",""],"179510":["",""],"182147":["커피큐브 음료",""],"272555":["",""],"272556":["",""],"272557":["",""],"272807":["RTD",""],"270965":["쇼핑백",""],"271168":["",""],"179320":["제주 한라봉 에이드","GRAND"],"179572":["토마토 주스","STANDARD"],"179654":["고창 수박 주스","STANDARD"],"180816":["제주레몬에이드","GRAND"],"181094":["납작복숭아 에이드","GRAND"],"182778":["샤인머스캣 케일 주스",""],"182779":["비트 사과 주스",""],"182973":["고창 수박 주스","GRAND"],"183697":["베리베리 에이드","GRAND"],"181198":["딸기 바나나 요거트","STANDARD"],"179878":["밀크 초콜릿","STANDARD"],"179880":["밀크 초콜릿","STANDARD"],"179881":["밀크 초콜릿","GRAND"],"183481":["딥 초콜릿 라떼",""],"183482":["딥 초콜릿 라떼",""],"181533":["커피칩 라떼 프라페","STANDARD"],"181534":["더블 초콜릿 프라페","STANDARD"],"181535":["제주 말차 라떼 프라페","STANDARD"],"181536":["카라멜 마키아토 프라페","STANDARD"],"181537":["망고 파인애플 프라페","STANDARD"],"183129":["비타민C 아사이베리 요거트 프라페",""],"183804":["아이스크림 우리 팥 빙수 프라페",""],"183805":["아이스크림 망고 빙수 프라페",""],"183931":["아이스크림 멜론 프라페","STANDARD"],"179696":["제주한라봉티","STANDARD"],"181201":["샤인 다즐링 홍차","STANDARD"],"181202":["샤인 다즐링 홍차","STANDARD"],"181207":["로얄 캐모마일 허브차","STANDARD"],"181208":["로얄 캐모마일 허브차","STANDARD"],"181209":["크림슨 펀치 과일차","STANDARD"],"181210":["크림슨 펀치 과일차","STANDARD"],"181505":["쿨 민트 티","STANDARD"],"181506":["쿨 민트 티","STANDARD"],"183131":["제로칼로리 바나바 레몬 우롱티",""],"179585":["스팀밀크","STANDARD"],"179586":["스팀밀크","GRAND"],"179587":["아이스밀크","STANDARD"],"179874":["제주 말차 라떼","STANDARD"],"179875":["제주 말차 라떼","GRAND"],"179876":["제주 말차 라떼","STANDARD"],"179877":["제주 말차 라떼","GRAND"],"182952":["말차 샷 추가",""],"183695":["라벤더 말차 라떼","STANDARD"],"183696":["라벤더 말차 라떼","GRAND"],"183712":["커피 큐브 WITH 우바 아쌈 밀크티","STANDARD"],"183713":["커피 큐브 WITH 우바 아쌈 밀크티","GRAND"],"183715":["우바 아쌈 밀크티","STANDARD"],"183716":["우바 아쌈 밀크티","GRAND"],"183717":["우바 아쌈 밀크티","STANDARD"],"183718":["우바 아쌈 밀크티","GRAND"],"183915":["바나나 말차라떼","STANDARD"],"183918":["바나나 말차라떼","GRAND"],"170037":["샷추가",""],"170052":["룽고","GRAND"],"170054":["룽고","STANDARD"],"170132":["룽고","GRAND"],"170134":["룽고","STANDARD"],"179097":["샷추가",""],"179548":["아메리카노","STANDARD"],"179549":["아메리카노","STANDARD"],"180521":["디카페인 샷변경","STANDARD"],"180642":["디카페인 샷변경",""],"181109":["디카페인 아메리카노","STANDARD"],"181127":["디카페인 아메리카노","STANDARD"],"182128":["샷추가",""],"182153":["시즌 원두 샷 변경",""],"182165":["샷추가(셋팅)",""],"182167":["디카페인 샷 추가(세팅용)",""],"183023":["시즌원두 샷 추가(세팅)",""],"183150":["원액 한 샷 추가",""],"183573":["푸릇프룻 룽고","STANDARD"],"183574":["푸릇프룻 룽고","STANDARD"],"183575":["푸릇프룻 룽고","GRAND"],"183576":["푸릇프룻 룽고","GRAND"],"183583":["푸릇프룻 콜드브루","STANDARD"],"183584":["푸릇프룻 콜드브루","GRAND"],"183714":["커피 큐브 WITH 아메리카노","STANDARD"],"183754":["아메리카노","VENTI"],"183755":["디카페인 아메리카노","VENTI"],"183774":["",""],"M0000067":["커피 미제공",""],"170078":["카페라떼","GRAND"],"170080":["카페라떼","STANDARD"],"170081":["카푸치노","GRAND"],"170083":["카푸치노","STANDARD"],"170155":["카페라떼","GRAND"],"170157":["카페라떼","STANDARD"],"179371":["시나몬라떼","STANDARD"],"179376":["시나몬라떼","STANDARD"],"179381":["시나몬라떼","GRAND"],"179386":["시나몬라떼","GRAND"],"179699":["스페니쉬라떼","STANDARD"],"179700":["스페니쉬라떼","STANDARD"],"179701":["스페니쉬라떼","GRAND"],"179702":["스페니쉬라떼","GRAND"],"179737":["플랫화이트",""],"179897":["카라멜마키아토","STANDARD"],"179898":["카라멜마키아토","STANDARD"],"179951":["카라멜마키아토","GRAND"],"179952":["카라멜마키아토","GRAND"],"179976":["락토프리 카페라떼","STANDARD"],"179977":["락토프리 카페라떼","GRAND"],"179978":["락토프리 카페라떼","STANDARD"],"179979":["락토프리 카페라떼","GRAND"],"180769":["오트 카페 라떼","GRAND"],"180770":["오트 카페 라떼","STANDARD"],"180771":["오트 카페 라떼","GRAND"],"180772":["오트 카페 라떼","STANDARD"],"180978":["바닐라빈 카페라떼","STANDARD"],"180979":["바닐라빈 카페라떼","GRAND"],"180980":["바닐라빈 카페라떼","STANDARD"],"180981":["바닐라빈 카페라떼","GRAND"],"181107":["디카페인 시나몬 카페라떼","GRAND"],"181108":["디카페인 시나몬 카페라떼","STANDARD"],"181110":["디카페인 카페오트","GRAND"],"181111":["디카페인 카페오트","STANDARD"],"181112":["디카페인 카페라떼","GRAND"],"181113":["디카페인 카페라떼","STANDARD"],"181114":["디카페인 카푸치노","GRAND"],"181115":["디카페인 카푸치노","STANDARD"],"181116":["디카페인 플랫화이트",""],"181117":["디카페인 락토프리 카페라떼","GRAND"],"181118":["디카페인 락토프리 카페라떼","STANDARD"],"181120":["디카페인 바닐라빈 카페라떼","STANDARD"],"181121":["디카페인 스페니쉬 카페라떼","GRAND"],"181122":["디카페인 스페니쉬 카페라떼","STANDARD"],"181123":["디카페인 카라멜 마키아토","GRAND"],"181124":["디카페인 카라멜 마키아토","STANDARD"],"181125":["디카페인 시나몬 카페라떼","GRAND"],"181126":["디카페인 시나몬 카페라떼","STANDARD"],"181130":["디카페인 카페오트","GRAND"],"181131":["디카페인 카페오트","STANDARD"],"181132":["디카페인 카페라떼","GRAND"],"181133":["디카페인 카페라떼","STANDARD"],"181134":["디카페인 락토프리 카페라떼","GRAND"],"181135":["디카페인 락토프리 카페라떼","STANDARD"],"181136":["디카페인 바닐라빈 카페라떼","GRAND"],"181137":["디카페인 바닐라빈 카페라떼","STANDARD"],"181138":["디카페인 스페니쉬 카페라떼","GRAND"],"181139":["디카페인 스페니쉬 카페라떼","STANDARD"],"181140":["디카페인 카라멜 마키아토","GRAND"],"181141":["디카페인 카라멜 마키아토","STANDARD"],"181190":["카페 모카","STANDARD"],"181191":["카페 모카","GRAND"],"181192":["카페 모카","STANDARD"],"181193":["카페 모카","GRAND"],"182117":["플랫화이트",""],"182141":["디카페인 플랫화이트",""],"182564":["제주말차 크림 라떼","STANDARD"],"182565":["제주말차 크림 라떼","GRAND"],"182566":["제주말차 크림 라떼","STANDARD"],"182567":["제주말차 크림 라떼","GRAND"],"182863":["커피큐브 WITH 카페라떼","STANDARD"],"182864":["커피큐브 WITH 카페라떼","GRAND"],"183577":["푸릇프룻 플랫화이트",""],"183578":["푸릇프룻 플랫화이트",""],"183579":["푸릇프룻 카페라떼","STANDARD"],"183580":["푸릇프룻 카페라떼","STANDARD"],"183581":["푸릇프룻 카페라떼","GRAND"],"183582":["푸릇프룻 카페라떼","GRAND"],"183586":["푸릇프룻 콜드브루 라떼","STANDARD"],"183587":["푸릇프룻 콜드브루 라떼","GRAND"],"183692":["우베 카페 라떼","STANDARD"],"183693":["우베 카페 라떼","STANDARD"],"183916":["바나나 카페라떼","STANDARD"],"170055":["리스트레토",""],"170060":["에스프레소 마키아토","STANDARD"],"170065":["에스프레소",""],"180699":["에스프레소 콘파나",""],"183572":["시즌 에스프레소 푸릇프룻",""],"272525":["랑드샤",""],"272526":["랑드샤",""],"272527":["페레로로쉐",""],"272528":["페레로로쉐",""],"272914":["상하스낵",""],"272915":["상하스낵",""],"272916":["상하스낵",""],"270591":["나타 단품",""],"181541":["원더폴데이_오후",""],"183811":["생딸기 마스카포네 생크림",""],"183812":["마운틴 말차 쇼콜라",""],"272425":["크림롤",""],"272541":["거점밀도",""],"272571":["헤이즐넛 케이크",""],"273446":["완제밀도",""],"273447":["완제밀도",""],"273448":["완제밀도",""],"181707":["카스텔라",""],"182775":["카스텔라(말차)",""],"182944":["거점밀도",""],"182945":["거점밀도",""],"183244":["완제밀도",""],"183245":["완제밀도",""],"183937":["카스텔라(한라봉)",""],"271280":["원통쿠키",""],"272427":["카스텔라",""],"272588":["카스텔라",""],"272728":["카스텔라(말차)",""],"272939":["완제밀도",""],"272940":["완제밀도",""],"272941":["완제밀도",""],"272946":["완제밀도",""],"272949":["완제밀도",""],"272953":["완제밀도",""],"272954":["완제밀도",""],"272955":["완제밀도",""],"272960":["완제밀도",""],"273101":["완제밀도",""],"273273":["완제밀도",""],"273274":["완제밀도",""],"273275":["완제밀도",""],"273276":["완제밀도",""],"273313":["완제밀도",""],"273465":["카스텔라(한라봉)",""],"181542":["원더폴데이_오전",""],"183038":["상하롱소시지핫도그",""],"272783":["햄치즈스크램블 토스트샌드위치",""],"273285":["완제밀도",""],"273286":["완제밀도",""],"273288":["완제밀도",""],"273312":["완제밀도",""],"270233":["산펠레그리노",""],"270726":["에비앙",""],"272962":["소브스 바나바 레몬 워터",""],"183275":["레몬 루비 셔벗",""],"273048":["프롬그린 세레이션 텀블러",""],"273061":["스토크 세라믹 텀블러",""],"273062":["스토크 세라믹 텀블러",""],"689":["",""],"690":["",""],"701":["",""],"270964":["쇼핑백",""],"183775":["",""],"179879":["밀크 초콜릿","GRAND"],"181015":["경산대추 생강차","STANDARD"],"181016":["경산대추 생강차","STANDARD"],"182127":["샷추가",""],"181532":["NEW나타세트",""],"270593":["나타 단품",""],"270682":["나타 단품",""],"183233":["트리플 쇼콜라 케이크",""],"271011":["크림롤",""],"273317":["말차 크림 롤 ",""],"273431":["고창고구마 바스크치즈케이크",""],"273443":["강남전용 케이크",""],"181531":["원통쿠키세트",""],"271333":["원통쿠키",""],"272467":["스콘",""],"272468":["스콘",""],"272487":["쇼핑백",""],"272533":["크루아상",""],"272534":["뺑오쇼콜라",""],"183499":["잉글리시머핀",""],"183501":["잉글리시머핀",""],"271015":["반숙란",""],"270238":["상하기타",""],"271179":["RTD",""],"273467":["소브스 바나바 레몬 워터",""],"281030":["콜드브루 (RTD)",""],"273055":["하우스 머그",""],"273056":["하우스 머그",""],"281233":["New 리유저블텀블러_블루밍핑크(Blooming p",""],"669":["",""],"271990":["생크림 소프트 케이크",""],"270525":["상하기타",""],"271145":["요미요미 유기농주스 종합과일",""],"271287":["[상시] 텀블러",""],"271288":["[상시] 텀블러",""],"272548":["봄보 루나텀블러",""],"272551":["봄보 머그",""],"273047":["하우스 머그",""],"281231":["New 리유저블텀블러_프로즌화이트(Frozen W",""],"270498":["싱글오리진","GRAND"],"281106":["싱글오리진","GRAND"],"688":["",""],"270966":["쇼핑백",""],"179588":["아이스밀크","GRAND"],"181119":["디카페인 바닐라빈 카페라떼","GRAND"],"273404":["완제밀도",""],"271494":["콜드브루 (RTD)",""],"273196":["콜드브루 원액 푸릇프룻 ",""],"272547":["봄보 몬테텀블러",""],"272550":["봄보 시엘로텀블러",""],"273060":["스토크 세라믹 텀블러",""],"273310":["",""],"273311":["",""],"587":["행사매출",""],"682":["",""],"271332":["원통쿠키",""],"272956":["완제밀도",""],"272546":["봄보 리오텀블러",""],"273468":["폴앤밀도",""],"270700":["크림치즈",""],"273199":["고창고구마 바스크치즈케이크",""],"272810":["카스텔라(말차)",""],"612":["",""],"183192":["",""],"272964":["유기농 코코넛 워터",""],"273015":["유기농 코코넛 워터",""],"183227":["",""],"183806":["아이스크림 망고 눈꽃빙수",""],"183808":["아이스크림 우리 팥 눈꽃빙수",""],"183930":["",""],"183230":["",""],"272729":["폴앤밀도",""],"272730":["폴앤밀도",""],"272731":["폴앤밀도",""],"272732":["폴앤밀도",""],"272734":["폴앤밀도",""],"272735":["폴앤밀도",""],"272736":["폴앤밀도",""],"272738":["폴앤밀도",""],"272741":["폴앤밀도",""],"272742":["폴앤밀도",""],"272743":["폴앤밀도",""],"272748":["폴앤밀도",""],"272749":["폴앤밀도",""],"272750":["폴앤밀도",""],"272751":["폴앤밀도",""],"272752":["폴앤밀도",""],"272757":["폴앤밀도","GRAND"],"272758":["폴앤밀도","GRAND"],"272759":["폴앤밀도","GRAND"],"272760":["폴앤밀도",""],"272761":["폴앤밀도",""],"272764":["폴앤밀도",""],"272767":["폴앤밀도",""],"272768":["폴앤밀도",""],"272770":["폴앤밀도",""],"272771":["폴앤밀도",""],"272775":["폴앤밀도",""],"272798":["폴앤밀도",""],"272799":["폴앤밀도",""],"272800":["폴앤밀도",""],"272801":["폴앤밀도",""],"272802":["폴앤밀도",""],"272805":["폴앤밀도",""],"272808":["폴앤밀도",""],"272865":["폴앤밀도",""],"272867":["폴앤밀도",""],"272874":["폴앤밀도",""],"272875":["폴앤밀도",""],"272876":["폴앤밀도",""],"272878":["폴앤밀도",""],"272880":["폴앤밀도",""],"273037":["폴앤밀도",""],"273038":["폴앤밀도",""],"273039":["폴앤밀도",""],"273044":["폴앤밀도",""],"273112":["폴앤밀도",""],"273115":["폴앤밀도",""],"273120":["폴앤밀도",""],"273121":["폴앤밀도",""],"273123":["폴앤밀도",""],"273158":["폴앤밀도",""],"273185":["폴앤밀도",""],"273194":["폴앤밀도",""],"273195":["폴앤밀도",""],"273197":["폴앤밀도",""],"273198":["폴앤밀도",""],"273266":["폴앤밀도",""],"273267":["폴앤밀도",""],"273269":["폴앤밀도",""],"273270":["폴앤밀도",""],"273271":["폴앤밀도",""],"273296":["폴앤밀도",""],"273297":["폴앤밀도",""],"273298":["폴앤밀도",""],"273314":["폴앤밀도",""],"273318":["폴앤밀도",""],"273410":["폴앤밀도",""],"273411":["폴앤밀도",""],"273432":["폴앤밀도",""],"273469":["폴앤밀도",""],"273470":["폴앤밀도",""],"273501":["폴앤밀도",""],"907060":["폴앤밀도",""],"272549":["봄보 디아텀블러",""],"183118":["추석 선물 세트",""],"183902":["초당옥수수 아이스크림 디저트컵",""],"683":["",""],"170105":["스페셜티","STANDARD"],"170175":["스페셜티","STANDARD"],"180461":["스페셜티","STANDARD"],"180463":["스페셜티","STANDARD"],"272948":["완제밀도",""],"272434":["베이글",""],"270924":["머그",""],"179333":["바리스타 파우치",""],"270874":["머그",""],"271286":["[상시] 텀블러",""],"272911":["상하잼",""],"272912":["상하잼",""],"183059":["포니 초코 바나나 아이스크림",""],"271126":["앵글머그",""],"272435":["베이글",""],"181518":["THE아이스크림카페라떼",""],"271195":["돌체구스토 호환 캡슐",""],"182137":["제주 한라봉 에이드","VENTI"],"182139":["납작복숭아 에이드","VENTI"],"183585":["푸릇프룻 콜드브루","VENTI"],"183588":["푸릇프룻 콜드브루 라떼","VENTI"],"272438":["거점밀도",""],"272450":["거점밀도",""],"272437":["거점밀도",""],"272440":["거점밀도",""],"272442":["거점밀도",""],"272444":["거점밀도",""],"272449":["거점밀도",""],"272453":["거점밀도",""],"272454":["거점밀도",""],"272456":["거점밀도",""],"272542":["거점밀도",""],"272671":["거점밀도",""],"272862":["거점밀도",""],"273127":["거점밀도",""],"273412":["거점밀도",""],"272050":["어메이징 오트 커피_330ML",""],"273483":["거점밀도",""],"320005":["시그니처블렌드","GRAND"],"320008":["싱글오리진","GRAND"],"320022":["시그니처블렌드","GRAND"],"320117":["싱글오리진","GRAND"],"320118":["싱글오리진","GRAND"],"320129":["싱글오리진","GRAND"],"281163":["셀렉스 스포츠 드링크",""],"183273":["피버 루비 하이볼",""],"183274":["조니 루비 클라우드",""],"281232":["New 리유저블텀블러_블랙(Black) 10EA/BOX",""],"272051":["어메이징 오트 초콜릿_330ML",""],"273287":["완제밀도",""],"271395":["스틱 커피",""],"271412":["[시즌] 텀블러",""],"593":["",""],"183603":["망고패션 에이드","GRAND"],"180667":["나타세트",""],"271315":["[상시] 에스프레소잔세트",""],"183894":["누텔라 아이스크림 라떼","STANDARD"],"272725":["돌체구스토 호환 캡슐",""],"272913":["상하잼",""],"271413":["[시즌] 텀블러",""],"183226":["",""],"183228":["",""],"183229":["",""],"272439":["거점밀도",""],"273482":["거점밀도",""],"607":["",""],"271183":["셀렉스 코어 프로틴 바",""],"271289":["허스키 컵 텀블러",""],"271222":["어메이징 오트 오리지널 190ml",""],"273458":["허쉬모어딥 쇼콜라",""],"271131":["",""],"270237":["상하목장 우유",""],"270997":["상하목장 일반 우유",""],"270998":["상하목장 저지방 우유",""],"272000":["",""],"273402":["완제밀도",""],"636":["",""],"588":["행사매출",""],"183896":["누텔라 아이스크림",""],"272713":["제주 블렌드 드립백",""],"180942":["",""],"180819":["제주레몬에이드","GRAND"],"180820":["제주레몬에이드","GRAND"],"272782":["랑드샤",""],"272963":["랑드샤",""],"183125":["랑드샤",""],"181525":["무화과월넛크림치즈",""],"270778":["포장재",""],"270779":["포장재",""],"272950":["완제밀도",""],"183047":["고창 복분자 에이드",""],"180747":["일뽀르노기타",""],"180751":["일뽀르노피자",""],"180752":["일뽀르노피자",""],"181235":["일뽀르노파스타",""],"181236":["일뽀르노피자",""],"182324":["일뽀르노파스타",""],"182329":["일뽀르노파스타",""],"182334":["일뽀르노피자",""],"182335":["일뽀르노파스타",""],"182336":["일뽀르노피자",""],"182337":["일뽀르노피자",""],"182345":["일뽀르노기타",""],"182921":["일뽀르노피자",""],"183292":["일뽀르노피자",""],"183609":["일뽀르노기타",""],"183610":["일뽀르노기타",""],"183611":["일뽀르노기타",""],"183612":["일뽀르노기타",""],"183613":["일뽀르노기타",""],"271135":["콜라",""],"271779":["콜라",""],"181524":["대파베이컨크림치즈",""],"271314":["[상시] 에스프레소잔세트",""],"182545":["밀크 아이스크림",""],"182546":["밀크 아이스크림",""],"180840":["초콜릿 아이스크림",""],"180841":["초콜릿 아이스크림",""],"182547":["초콜릿 아이스크림",""],"182548":["초콜릿 아이스크림",""],"182549":["초콜릿 아이스크림",""],"182550":["초콜릿 아이스크림",""],"273401":["완제밀도",""],"271422":["병와인",""],"181081":["삿포로 생맥주",""],"183277":["조니워커 블랙 루비 샷 추가",""],"181020":["글라스와인",""],"181021":["글라스와인",""],"271423":["병와인",""],"273403":["완제밀도",""],"271197":["돌체구스토 호환 캡슐",""],"183905":["게이샤 G 블렌드 룽고",""],"271411":["[시즌] 텀블러",""],"270892":["바리스타 파우치",""],"270893":["바리스타 파우치",""],"270894":["바리스타 파우치",""],"616":["",""],"637":["",""],"646":["",""],"699":["",""],"182574":["제주구좌 당근주스",""],"182575":["제주개역 프라페 ",""],"180522":["디카페인 샷변경","GRAND"],"182637":["제주 한라봉 카페라떼 ","STANDARD"],"272723":["거점밀도",""],"272663":["카스텔라(말차)",""],"272712":["카스텔라",""],"183048":["호박 식혜",""],"183387":["고창 고구마 라떼","STANDARD"],"183388":["고창 고구마 라떼","STANDARD"],"272469":["",""],"272682":["",""],"272683":["",""],"272684":["",""],"272686":["",""],"272698":["",""],"272703":["",""],"272704":["",""],"272706":["",""],"272707":["",""],"183503":["상하계란",""],"183776":["",""],"183777":["",""],"183778":["",""],"693":["",""],"905276":["",""],"182860":["커피큐브 WITH 룽고","GRAND"],"182867":["커피큐브 WITH 룽고","STANDARD"],"183461":["",""],"182861":["커피큐브 WITH 바닐라빈 카페라떼","STANDARD"],"182862":["커피큐브 WITH 바닐라빈 카페라떼","GRAND"],"182865":["커피큐브 WITH 시나몬 카페라떼","STANDARD"],"182866":["커피큐브 WITH 시나몬 카페라떼","GRAND"],"183807":["",""],"183469":["",""],"183470":["",""],"183465":["",""],"183466":["",""],"183730":["",""],"183731":["",""],"183732":["",""],"183733":["",""],"183734":["",""],"183735":["",""],"183736":["",""],"183737":["",""],"183738":["",""],"183741":["",""],"183742":["",""],"183743":["",""],"183744":["",""],"183745":["",""],"183746":["",""],"272464":["",""],"183809":["",""],"726":["",""],"183803":["",""],"272945":["완제밀도",""],"183191":["잉글리시머핀","GRAND"],"183467":["",""],"183468":["",""],"183477":["",""],"183478":["",""],"182816":["클레멘타인 오렌지 자몽 에이드","GRAND"],"183899":["티라미수 아이스크림 디저트컵",""],"650":["",""],"730":["",""],"731":["",""],"732":["",""],"180834":["소다 아이스크림",""],"180835":["소다 아이스크림",""],"183895":["누텔라 아이스크림 라떼","GRAND"],"183897":["누텔라 아이스크림",""],"183898":["누텔라 아이스크림",""],"183900":["제주말차 티라미수 아이스크림 디저트컵",""],"183901":["누텔라 아이스크림 디저트컵",""],"183923":["흑임자 아이스크림",""],"183924":["흑임자 아이스크림",""],"183925":["흑임자 아이스크림",""],"320242":["게이샤 G 블렌드100G","GRAND"],"183904":["게이샤 G 블렌드 룽고",""],"183892":["커피 크림 드 라떼",""],"183893":["골든 바나나 브륄레 크림 드 라떼",""],"183906":["게이샤 G 블렌드 카페라떼",""],"183907":["게이샤 G 블렌드 카페라떼",""],"183903":["게이샤 G 블렌드 에스프레소",""],"183936":["",""],"183910":["강남전용 케이크",""],"183911":["강남전용 케이크",""],"183912":["강남전용 케이크",""],"183913":["강남전용 케이크",""],"273315":["",""],"273435":["강남전용 케이크",""],"273437":["강남전용 케이크",""],"273439":["강남전용 케이크",""],"273442":["강남전용 케이크",""],"273445":["강남전용 케이크",""],"273476":["강남전용 케이크",""],"273477":["강남전용 케이크",""],"273478":["강남전용 케이크",""],"272447":["거점밀도",""],"272860":["거점밀도",""],"273100":["완제밀도",""],"273455":["거점밀도",""],"273456":["거점밀도",""],"273484":["거점밀도",""],"273449":["",""],"273450":["",""],"273451":["",""],"273452":["",""],"273453":["",""],"590":["딸기 아이스크림",""],"181527":["벌집꿀 토핑 아이스크림",""],"179235":["밀크티 아이스크림",""],"179236":["밀크티 아이스크림",""],"183604":["밀크티 아이스크림 라떼","STANDARD"],"183606":["푸릇프룻 커피 아이스크림 라떼","STANDARD"],"183607":["푸릇프룻 커피 아이스크림",""],"183608":["푸릇프룻 커피 아이스크림",""],"0":["",""]};
+function masterOf(code){
+  const c = normCode(code);
+  return c && CODE_MASTER[c] ? CODE_MASTER[c] : null;
+}
+// 표시용 이름(label)과 마스터의 실제 제품군명(group)이 다른 경우가 있어 별도로 매핑합니다
+// (예: 화면엔 "핫도그"로 표시하지만 마스터 제품군명은 "상하롱소시지핫도그").
+const FEATURED_PRODUCTS_DEF = [
+  {label:'룽고', group:'룽고'}, {label:'아메리카노', group:'아메리카노'},
+  {label:'아이스크림 카페 라떼', group:'아이스크림 카페 라떼'}, {label:'카페라떼', group:'카페라떼'},
+  {label:'락토프리 카페라떼', group:'락토프리 카페라떼'}, {label:'오트 카페 라떼', group:'오트 카페 라떼'},
+  {label:'바닐라빈 카페라떼', group:'바닐라빈 카페라떼'}, {label:'밀크 아이스크림', group:'밀크 아이스크림'},
+  {label:'카스텔라', group:'카스텔라'}, {label:'핫도그', group:'상하롱소시지핫도그'},
+  {label:'잉글리쉬머핀', group:'잉글리시머핀'}, {label:'나타 단품', group:'나타 단품'},
+  {label:'원더폴데이_오전', group:'원더폴데이_오전'}, {label:'원더폴데이_오후', group:'원더폴데이_오후'},
+];
+const FEATURED_PRODUCTS = FEATURED_PRODUCTS_DEF.map(x=>x.label);
+// 아이템코드가 마스터에 없는 극히 일부 상품을 대비한 보조 수단(이름 부분일치, 최후 수단으로만 사용)
+function coreProductName(raw){
+  let s = stripWs(raw);
+  if(/^[HI]/.test(s)) s = s.slice(1);
+  const m = s.match(/([SVG])$/);
+  const size = m ? m[1] : null;
+  if(size) s = s.slice(0,-1);
+  return { core:s, size };
+}
+const NEW_MENU_PRODUCTS_DEF = [
+  '초당옥수수 아이스크림','초당옥수수 아이스크림 카페 라떼','초당 옥수수 아이스크림 토핑컵',
+  '바나나 말차라떼','바나나 카페라떼','푸릇프룻 콜드브루','푸릇프룻 콜드브루 라떼',
+  '우바 아쌈 밀크티','커피 큐브 WITH 우바 아쌈 밀크티',
+  '아이스크림 우리 팥 빙수 프라페','아이스크림 망고 빙수 프라페',
+  '아이스크림 우리 팥 눈꽃빙수','아이스크림 망고 눈꽃빙수',
+].map(name=>({label:name, group:name}));
+const NEW_MENU_PRODUCTS = NEW_MENU_PRODUCTS_DEF.map(x=>x.label);
 document.getElementById('midMapInput').value = JSON.stringify(DEFAULT_MID_MAP, null, 2);
 document.getElementById('priceMapInput').value = JSON.stringify(DEFAULT_PRICE_MAP, null, 2);
 document.getElementById('advToggle').addEventListener('click', ()=>{
@@ -899,6 +996,92 @@ function findYearMonthBlock(aoa, year){
   }
   return null;
 }
+function computeStoreRanking(targetWB, storeNorm, YEAR, MONTH){
+  // 최근 마감월(전월) 기준으로 전 매장 매출/전년비 순위를 계산합니다.
+  // (당월은 다른 매장의 실적이 아직 채워지지 않은 경우가 많아, 비교 가능한 가장 최근 완료월을 사용)
+  if(!targetWB) return null;
+  const rankMonth = MONTH - 1;
+  if(rankMonth < 1) return null;
+  const monthIdx = rankMonth - 1;
+
+  let actualRows=null, actualNameCol=-1, actualColMap=null;
+  for(const sname of targetWB.sheetNames){
+    if(!str(sname).includes('실적')) continue;
+    const aoa = targetWB.sheets[sname];
+    const info = findMonthBlocks(aoa);
+    if(!info) continue;
+    const nameCol = guessStoreNameCol(aoa);
+    if(nameCol<0) continue;
+    actualRows = aoa; actualNameCol = nameCol; actualColMap = monthBlockToColMap(info.blocks[0]);
+    break;
+  }
+  if(!actualRows) return null;
+  const col = actualColMap[monthIdx];
+  if(col===null || col===undefined) return null;
+
+  let lyRows=null, lyNameCol=-1, lyColMap=null;
+  for(const sname of targetWB.sheetNames){
+    const aoa = targetWB.sheets[sname];
+    const info = findYearMonthBlock(aoa, YEAR-1);
+    if(!info) continue;
+    const nameCol = guessStoreNameCol(aoa);
+    if(nameCol<0) continue;
+    lyRows = aoa; lyNameCol = nameCol; lyColMap = monthBlockToColMap(info.block);
+    break;
+  }
+
+  const entries = [];
+  const seen = new Set();
+  for(let r=0;r<actualRows.length;r++){
+    const row = actualRows[r]||[];
+    const nm = str(row[actualNameCol]);
+    if(!/^\d{2,4}\.\s*\S/.test(nm)) continue;
+    if(nm.includes('합계') || seen.has(nm)) continue;
+    seen.add(nm);
+    const val = num(row[col]);
+    if(val<=0) continue;
+    entries.push({ store:nm, actual: val, lastYear:null, growth:null });
+  }
+  if(!entries.length) return null;
+
+  if(lyRows && lyColMap){
+    const lyCol = lyColMap[monthIdx];
+    if(lyCol!==null && lyCol!==undefined){
+      const lyMap = {};
+      for(let r=0;r<lyRows.length;r++){
+        const row = lyRows[r]||[];
+        const nm = str(row[lyNameCol]);
+        if(!/^\d{2,4}\.\s*\S/.test(nm)) continue;
+        if(!(nm in lyMap)) lyMap[nm] = num(row[lyCol]);
+      }
+      entries.forEach(e=>{
+        if(e.store in lyMap) e.lastYear = lyMap[e.store];
+        if(e.lastYear!=null && e.lastYear>0) e.growth = (e.actual-e.lastYear)/e.lastYear;
+      });
+    }
+  }
+
+  const byActual = entries.slice().sort((a,b)=>b.actual-a.actual);
+  byActual.forEach((e,i)=>{ e.salesRank = i+1; });
+  const growthEntries = entries.filter(e=>e.growth!==null).sort((a,b)=>b.growth-a.growth);
+  growthEntries.forEach((e,i)=>{ e.growthRank = i+1; });
+
+  const findOurs = list => list.find(e=>{ const n=normStoreName(e.store); return n===storeNorm || n.includes(storeNorm) || storeNorm.includes(n); });
+  const ourActualEntry = findOurs(byActual);
+  const ourGrowthEntry = findOurs(growthEntries);
+
+  return {
+    rankMonth,
+    totalStores: entries.length,
+    totalGrowthStores: growthEntries.length,
+    salesTop10: byActual.slice(0,10),
+    growthTop10: growthEntries.slice(0,10),
+    ourSalesRank: ourActualEntry ? ourActualEntry.salesRank : null,
+    ourActual: ourActualEntry ? ourActualEntry.actual : null,
+    ourGrowthRank: ourGrowthEntry ? ourGrowthEntry.growthRank : null,
+    ourGrowth: ourGrowthEntry ? ourGrowthEntry.growth : null,
+  };
+}
 function findAnnualBlockAnySheet(sheetNames, sheets, storeNorm){
   // "구분" 라벨 행 옆에 1월~12월이 나열되고, 그 아래쪽 같은 열에 '...계획'(목표), '...실적'(실적)
   // 라벨이 있는 표를 찾는다. (예: 매장별 목표매출 파일의 B62:O65 영역 — 구분/누적/1월..12월 헤더,
@@ -1291,9 +1474,17 @@ async function computeAll(){
     const nameStripped = stripWs(str(r[PCOL.name]));
     const net = num(r[PCOL.net]);
     const qty = num(r[PCOL.qty]);
-    if(LUNGO_SET.has(nameStripped)) coffeeMix.lungo += net;
-    else if(AMERICANO_SET.has(nameStripped)) coffeeMix.americano += net;
-    else if(DECAF_AMERICANO_SET.has(nameStripped)) coffeeMix.decaf += net;
+    const master = PCOL.code>=0 ? masterOf(r[PCOL.code]) : null;
+    const group = master ? master[0] : null;
+    if(group==='룽고') coffeeMix.lungo += net;
+    else if(group==='아메리카노') coffeeMix.americano += net;
+    else if(group==='디카페인 아메리카노') coffeeMix.decaf += net;
+    else if(!master){
+      // 마스터에 코드가 없는 극히 일부 상품에 대한 예비 수단
+      if(LUNGO_SET.has(nameStripped)) coffeeMix.lungo += net;
+      else if(AMERICANO_SET.has(nameStripped)) coffeeMix.americano += net;
+      else if(DECAF_AMERICANO_SET.has(nameStripped)) coffeeMix.decaf += net;
+    }
     if(nameStripped.includes('밀도')){
       const code = PCOL.code>=0 ? normCode(r[PCOL.code]) : '';
       if(!MILLDO_EXCLUDE_CODES.has(code)){ milldoNet += net; milldoQty += qty; }
@@ -1423,6 +1614,72 @@ async function computeAll(){
   }).sort((a,b)=>b.net-a.net).map((p,i)=>({rank:i+1, ...p}));
   const productTop20 = productAll.slice(0,20);
 
+  // ---- 주요상품 실적 · 신메뉴 실적 · 전체 사이즈 비중 (아이템코드 → 공식 제품군 마스터 기준) ----
+  function newBucket(){ return {qty:0, net:0, standardQty:0, standardNet:0, grandQty:0, grandNet:0, ventiQty:0, ventiNet:0, hasSizeInfo:false}; }
+  const featuredBuckets = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ featuredBuckets[d.group] = newBucket(); });
+  const newMenuBuckets = {}; NEW_MENU_PRODUCTS_DEF.forEach(d=>{ newMenuBuckets[d.group] = newBucket(); });
+  let overallStandardNet=0, overallGrandNet=0, overallVentiNet=0;
+  monthProdRows.forEach(r=>{
+    const qty = num(r[PCOL.qty]), net = num(r[PCOL.net]);
+    const master = PCOL.code>=0 ? masterOf(r[PCOL.code]) : null;
+    let group = master ? master[0] : null;
+    let size = master ? master[1] : null;
+    if(!master){
+      // 마스터에 코드가 없는 극히 일부 상품은 이름 접미사(S/G/V)로 사이즈만 예비 추정
+      const guess = coreProductName(str(r[PCOL.name]));
+      size = guess.size==='S'?'STANDARD':guess.size==='G'?'GRAND':guess.size==='V'?'VENTI':null;
+    }
+    if(size==='STANDARD') overallStandardNet += net;
+    else if(size==='GRAND') overallGrandNet += net;
+    else if(size==='VENTI') overallVentiNet += net;
+    if(group && featuredBuckets[group]){
+      const b = featuredBuckets[group];
+      b.qty+=qty; b.net+=net;
+      if(size==='STANDARD'){ b.standardQty+=qty; b.standardNet+=net; b.hasSizeInfo=true; }
+      else if(size==='GRAND'){ b.grandQty+=qty; b.grandNet+=net; b.hasSizeInfo=true; }
+      else if(size==='VENTI'){ b.ventiQty+=qty; b.ventiNet+=net; b.hasSizeInfo=true; }
+    }
+    if(group && newMenuBuckets[group]){
+      newMenuBuckets[group].qty+=qty; newMenuBuckets[group].net+=net;
+    }
+  });
+  const featuredProductStats = FEATURED_PRODUCTS_DEF.map(d=>{
+    const a = featuredBuckets[d.group];
+    const sizeTotal = a.standardNet + a.grandNet + a.ventiNet;
+    return {
+      name: d.label, qty:a.qty, net:a.net, share: prodTotalNet>0? a.net/prodTotalNet:0,
+      avgDailyQty: DAY_CUTOFF>0 ? a.qty/DAY_CUTOFF : 0,
+      hasSizeInfo: a.hasSizeInfo,
+      standardQty:a.standardQty, standardNet:a.standardNet, standardShare: sizeTotal>0? a.standardNet/sizeTotal:0,
+      grandQty:a.grandQty, grandNet:a.grandNet, grandShare: sizeTotal>0? a.grandNet/sizeTotal:0,
+      ventiQty:a.ventiQty, ventiNet:a.ventiNet, ventiShare: sizeTotal>0? a.ventiNet/sizeTotal:0,
+    };
+  });
+  const newMenuStats = NEW_MENU_PRODUCTS_DEF.map(d=>{
+    const a = newMenuBuckets[d.group];
+    return {
+      name: d.label, qty:a.qty, net:a.net, share: prodTotalNet>0? a.net/prodTotalNet:0,
+      avgDailyQty: DAY_CUTOFF>0 ? a.qty/DAY_CUTOFF : 0,
+    };
+  });
+  const overallSizeMix = { standard: overallStandardNet, grand: overallGrandNet, venti: overallVentiNet };
+
+  // ---- 소분류 · 상품 전년 대비 성장/부진 TOP5 (전년·당월 모두 실적이 있는 항목만 비교) ----
+  // 전년 매출이 아주 작은(예: 1~2개) 항목은 절대값은 미미해도 %로는 수백%씩 튀어 보일 수 있어,
+  // 최소 기준(전년 매출 1만원 이상)을 넘는 항목만 성장/부진 순위에 포함합니다.
+  const GROWTH_MIN_LY_NET = 10000;
+  const subGrowthCandidates = subList
+    .filter(x=>x.lyNet!=null && x.lyNet>=GROWTH_MIN_LY_NET && x.net>0)
+    .map(x=>({ name:x.name, net:x.net, lyNet:x.lyNet, growth:(x.net-x.lyNet)/x.lyNet }));
+  const subGrowthUp = subGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth).slice(0,5);
+  const subGrowthDown = subGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth).slice(0,5);
+
+  const prodGrowthCandidates = productAll
+    .filter(x=>x.lyNet!=null && x.lyNet>=GROWTH_MIN_LY_NET && x.net>0)
+    .map(x=>({ name:x.name, net:x.net, lyNet:x.lyNet, growth:(x.net-x.lyNet)/x.lyNet }));
+  const prodGrowthUp = prodGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth).slice(0,5);
+  const prodGrowthDown = prodGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth).slice(0,5);
+
   // ---- 6. waste TOP20 (+ 전체 순위) ----
   const monthWasteRows = wasteRows.filter(r=>{
     const d = normalizeDateStr(r[COL.waste.date]);
@@ -1451,6 +1708,44 @@ async function computeAll(){
   const wasteAll = Object.values(wasteGroup).sort((a,b)=> b.amt-a.amt || a.firstIdx-b.firstIdx)
     .map((w,i)=>({ rank:i+1, name:w.name, qty:w.qty, amt:w.amt, unitPrice: w.qty>0? w.amt/w.qty:0, rate: cumNet>0? w.amt/cumNet:0, reason:w.reason, date:w.lastDate }));
   const wasteTop20 = wasteAll.slice(0,20);
+
+  // ---- 폐기 사유별 집계 + 일자별 폐기 추이 ----
+  const wasteReasonAgg = {};
+  const wasteDateAgg = {};
+  monthWasteRows.forEach(({r})=>{
+    const name = str(r[COL.waste.name]);
+    if(!name) return;
+    const reason = str(r[COL.waste.reason]) || '(사유 미기재)';
+    let price = num(r[COL.waste.price]);
+    if(!price) price = num(priceMap[name]) || 0;
+    const qty = num(r[COL.waste.qty]);
+    const amt = qty * price;
+    if(!wasteReasonAgg[reason]) wasteReasonAgg[reason] = {qty:0, amt:0};
+    wasteReasonAgg[reason].qty += qty; wasteReasonAgg[reason].amt += amt;
+    const dateStr = normalizeDateStr(r[COL.waste.date]);
+    if(dateStr){
+      if(!wasteDateAgg[dateStr]) wasteDateAgg[dateStr] = {qty:0, amt:0};
+      wasteDateAgg[dateStr].qty += qty; wasteDateAgg[dateStr].amt += amt;
+    }
+  });
+  const wasteReasonList = Object.keys(wasteReasonAgg).map(k=>({
+    reason:k, ...wasteReasonAgg[k], share: wasteTotalAmt>0? wasteReasonAgg[k].amt/wasteTotalAmt:0
+  })).sort((a,b)=>b.amt-a.amt).map((w,i)=>({rank:i+1, ...w}));
+  const WEEKDAY_LABELS = ['월','화','수','목','금','토','일'];
+  const wasteWeekdayAgg = WEEKDAY_LABELS.map(()=>({amt:0, qty:0, count:0}));
+  daily.forEach(d=>{
+    if(d.day > DAY_CUTOFF) return; // 아직 지나지 않은 날은 제외
+    const idx = d.dow - 1;
+    if(idx<0 || idx>6) return;
+    const w = wasteDateAgg[d.dateStr];
+    wasteWeekdayAgg[idx].count += 1;
+    if(w){ wasteWeekdayAgg[idx].amt += w.amt; wasteWeekdayAgg[idx].qty += w.qty; }
+  });
+  const wasteWeekdayTrend = WEEKDAY_LABELS.map((label,i)=>({
+    label,
+    amt: wasteWeekdayAgg[i].count>0 ? wasteWeekdayAgg[i].amt/wasteWeekdayAgg[i].count : 0,
+    qty: wasteWeekdayAgg[i].count>0 ? wasteWeekdayAgg[i].qty/wasteWeekdayAgg[i].count : 0,
+  }));
 
   // ---- 7. day-of-week averages & forecast ----
   // 요일별 평균매출(7-1)은 "이미 지난 날짜"만으로 평균을 내야 한다. 아직 오지 않은 날짜를 0으로
@@ -1490,10 +1785,13 @@ async function computeAll(){
   const annualActualSum = actualsWithForecast.reduce((s,v)=>s+v,0);
   const annualLastYearSum = monthlyLastYear12.reduce((s,v)=>s+v,0);
 
+  const storeRanking = targetWB ? computeStoreRanking(targetWB, storeNorm, YEAR, MONTH) : null;
+
   return {
     YEAR, MONTH, DIM, DAY_CUTOFF,
     storeName: str(document.getElementById('storeNameInput').value) || '폴 바셋',
     isDtStore: !!(storeLabel && storeLabel.toUpperCase().includes('DT')),
+    storeRanking,
     coffeeMix, milldoNet, milldoQty, milldoProductList, milldoProdQtyTotal,
     storeMatchMode: !targetWB ? 'none' : (matchedMultiStore ? 'auto' : 'legacy'),
     daily, cumNet, cumTarget, cumLastYear, lastYearMonthTotal, monthTargetTotal,
@@ -1501,7 +1799,10 @@ async function computeAll(){
     weekdayStats, weekendStats, lastYearTraffic,
     midList, midTotal, subList, subTotal, midDetailList,
     productTop20, productAll, prodTotalNet, prodTotalQty,
+    subGrowthUp, subGrowthDown, prodGrowthUp, prodGrowthDown,
+    featuredProductStats, newMenuStats, overallSizeMix,
     wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, hasWaste: !!aoaWaste,
+    wasteReasonList, wasteWeekdayTrend,
     hasProd: !!aoaProd, hasProdLY, hasPos: !!aoaPos, hasTarget: !!targetWB,
     hasPrevYear: !!aoaPrev || !!lastYearDailyFromTarget,
     dowStats, forecast, annual, annualTargetSum, annualActualSum, annualLastYearSum
@@ -1548,7 +1849,116 @@ function multiDonutSVG(segments, size){
   });
   return `<svg width="${px}" height="${px}" viewBox="0 0 ${px} ${px}">${circles}</svg>`;
 }
-function coffeeAndMilldoBlock(kpi){
+function overallSizeMixBlock(kpi){
+  const mix = kpi.overallSizeMix || {standard:0, grand:0, venti:0};
+  const total = mix.standard + mix.grand + mix.venti;
+  const segs = [
+    {label:'STANDARD', value:mix.standard, color:'#2C1810'},
+    {label:'GRAND', value:mix.grand, color:'#E4002B'},
+    {label:'VENTI', value:mix.venti, color:'#1E3A8A'},
+  ];
+  const legend = segs.map(s=>{
+    const pct = total>0 ? s.value/total : 0;
+    return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <span style="width:12px;height:12px;border-radius:3px;background:${s.color};flex-shrink:0"></span>
+      <span style="font-size:.86rem;color:var(--text-dim);flex:1">${s.label}</span>
+      <span style="font-size:.86rem;font-weight:700">${fmtPct(pct)}</span>
+      <span style="font-size:.78rem;color:var(--text-mute);min-width:90px;text-align:right">${fmtWon(s.value)}</span>
+    </div>`;
+  }).join('');
+  return `<div class="card" style="padding:22px">
+    <div class="label" style="margin-bottom:14px">사이즈별(STANDARD / GRAND / VENTI) 판매 금액 · 비중 (전 상품 기준)</div>
+    <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+      <div style="display:flex;justify-content:center">${multiDonutSVG(segs, 150)}</div>
+      <div style="flex:1;min-width:200px">${legend}</div>
+    </div>
+    ${total===0?'<p class="note">사이즈(S/G/V) 표기가 확인된 상품 판매 데이터가 없습니다.</p>':''}
+  </div>`;
+}
+function featuredProductBlock(kpi){
+  const chartsRow = productMixChartsBlock(kpi);
+  const list = kpi.featuredProductStats||[];
+  const mainRows = list.map(x=>`<tr>
+    <td style="text-align:left">${x.name}</td>
+    <td>${fmtNum(x.qty)}</td>
+    <td>${fmtWon(x.net)}</td>
+    <td>${fmtPct(x.share)}</td>
+    <td>${x.avgDailyQty.toFixed(1)}개</td>
+  </tr>`).join('');
+  const mainTable = `<div class="tablewrap"><table class="dt">
+    <thead><tr><th style="text-align:left">상품명</th><th>판매수량</th><th>매출(VAT 별도)</th><th>판매비중</th><th>일평균 판매수량</th></tr></thead>
+    <tbody>${mainRows}</tbody>
+  </table></div>`;
+
+  const sizeItems = list.filter(x=>x.hasSizeInfo);
+  let sizeTable = '';
+  if(sizeItems.length){
+    const sizeRows = sizeItems.map(x=>`<tr>
+      <td style="text-align:left">${x.name}</td>
+      <td>${fmtWon(x.standardNet)}</td><td>${fmtPct(x.standardShare)}</td>
+      <td>${fmtWon(x.grandNet)}</td><td>${fmtPct(x.grandShare)}</td>
+      <td>${fmtWon(x.ventiNet)}</td><td>${fmtPct(x.ventiShare)}</td>
+    </tr>`).join('');
+    sizeTable = `
+      <div class="subgroup-label" style="margin-top:20px">주요 상품 사이즈별(STANDARD / GRAND / VENTI) 판매 금액 · 비중</div>
+      <div class="tablewrap"><table class="dt">
+        <thead><tr><th rowspan="2" style="text-align:left;vertical-align:bottom">상품명</th><th colspan="2" class="group-head cur">STANDARD</th><th colspan="2" class="group-head ly">GRAND</th><th colspan="2" class="group-head">VENTI</th></tr>
+        <tr><th>매출(VAT 별도)</th><th>비중</th><th>매출(VAT 별도)</th><th>비중</th><th>매출(VAT 별도)</th><th>비중</th></tr></thead>
+        <tbody>${sizeRows}</tbody>
+      </table></div>`;
+  }
+  return chartsRow + mainTable + sizeTable;
+}
+function newMenuBlock(kpi){
+  const list = kpi.newMenuStats||[];
+  const rows = list.map(x=>`<tr>
+    <td style="text-align:left">${x.name}</td>
+    <td>${fmtNum(x.qty)}</td>
+    <td>${fmtWon(x.net)}</td>
+    <td>${fmtPct(x.share)}</td>
+    <td>${x.avgDailyQty.toFixed(1)}개</td>
+  </tr>`).join('');
+  return `<div class="tablewrap"><table class="dt">
+    <thead><tr><th style="text-align:left">상품명</th><th>판매수량</th><th>매출(VAT 별도)</th><th>판매비중</th><th>일평균 판매수량</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+function growthTable(items, positive){
+  if(!items.length) return `<div class="empty-hint" style="padding:12px">비교 가능한 항목이 없습니다.</div>`;
+  const rows = items.map((x,i)=>`<tr>
+    <td><span class="rankbadge">${i+1}</span></td>
+    <td style="text-align:left">${x.name}</td>
+    <td>${fmtWon(x.net)}</td>
+    <td>${fmtWon(x.lyNet)}</td>
+    <td class="${positive?'pos':'neg'}">${fmtSignedPct(x.growth)}</td>
+  </tr>`).join('');
+  return `<div class="tablewrap"><table class="dt">
+    <thead><tr><th>순위</th><th style="text-align:left">이름</th><th>당월 매출</th><th>전년 매출</th><th>성장률</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+function insightBlock(kpi){
+  return `<div class="two-col">
+    <div>
+      <div class="subgroup-label">전년 대비 성장 소분류 TOP 5</div>
+      ${growthTable(kpi.subGrowthUp, true)}
+    </div>
+    <div>
+      <div class="subgroup-label">전년 대비 부진 소분류 TOP 5</div>
+      ${growthTable(kpi.subGrowthDown, false)}
+    </div>
+    <div>
+      <div class="subgroup-label">전년 대비 성장 상품 TOP 5</div>
+      ${growthTable(kpi.prodGrowthUp, true)}
+    </div>
+    <div>
+      <div class="subgroup-label">전년 대비 부진 상품 TOP 5</div>
+      ${growthTable(kpi.prodGrowthDown, false)}
+    </div>
+  </div>
+  <p class="note">전년 매출이 1만원 미만으로 아주 작은 항목은 소수 판매만으로 성장률이 크게 튈 수 있어 순위 대상에서 제외했습니다.</p>`;
+}
+function productMixChartsBlock(kpi){
   const mix = kpi.coffeeMix || {lungo:0, americano:0, decaf:0};
   const mixTotal = mix.lungo + mix.americano + mix.decaf;
   const mixSegs = [
@@ -1565,8 +1975,6 @@ function coffeeAndMilldoBlock(kpi){
       <span style="font-size:.78rem;color:var(--text-mute);min-width:90px;text-align:right">${fmtWon(s.value)}</span>
     </div>`;
   }).join('');
-  const milldoShare = kpi.prodTotalNet>0 ? kpi.milldoNet/kpi.prodTotalNet : 0;
-  const hasMilldo = (kpi.milldoProductList && kpi.milldoProductList.length > 0);
   const titleStyle = "font-family:'Noto Sans KR',sans-serif;font-size:1.32rem;font-weight:800;color:var(--text);margin-bottom:14px";
 
   const mixColumn = `<div style="display:flex;flex-direction:column;height:100%">
@@ -1580,30 +1988,35 @@ function coffeeAndMilldoBlock(kpi){
       ${mixTotal===0?'<p class="note">해당 상품 판매 데이터가 없습니다.</p>':''}
     </div>
   </div>`;
+  const sizeColumn = `<div style="display:flex;flex-direction:column;height:100%">
+    <div style="${titleStyle}">사이즈별 판매 비중</div>
+    ${overallSizeMixBlock(kpi)}
+  </div>`;
 
-  if(!hasMilldo){
-    return mixColumn;
-  }
-
-  const milldoColumn = `<div style="display:flex;flex-direction:column;height:100%">
-    <div style="${titleStyle}">밀도 매출 비중</div>
-    <div class="card" style="padding:22px;flex:1">
-      <div class="label" style="margin-bottom:14px">(샌드위치, 구움과자 3종 제외)</div>
-      <div style="display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap">
-        <div style="display:flex;justify-content:center">${donutSVG(milldoShare, '#E4002B', 150, fmtPct(milldoShare,0))}</div>
-        <div style="text-align:left">
-          <div class="value" style="font-size:1.15rem">${fmtWon(kpi.milldoNet)}</div>
-          <div class="sub">판매수량 ${fmtNum(kpi.milldoQty)}개</div>
+  return `<div class="two-col" style="margin-bottom:20px">${mixColumn}${sizeColumn}</div>`;
+}
+function milldoBlock(kpi){
+  const milldoShare = kpi.prodTotalNet>0 ? kpi.milldoNet/kpi.prodTotalNet : 0;
+  const hasMilldo = (kpi.milldoProductList && kpi.milldoProductList.length > 0);
+  if(!hasMilldo) return '';
+  const titleStyle = "font-family:'Noto Sans KR',sans-serif;font-size:1.32rem;font-weight:800;color:var(--text);margin-bottom:14px";
+  return `<div>
+      <div style="${titleStyle}">밀도 매출 비중</div>
+      <div class="card" style="padding:22px">
+        <div class="label" style="margin-bottom:14px">(샌드위치, 구움과자 3종 제외)</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap">
+          <div style="display:flex;justify-content:center">${donutSVG(milldoShare, '#E4002B', 150, fmtPct(milldoShare,0))}</div>
+          <div style="text-align:left">
+            <div class="value" style="font-size:1.15rem">${fmtWon(kpi.milldoNet)}</div>
+            <div class="sub">판매수량 ${fmtNum(kpi.milldoQty)}개</div>
+          </div>
         </div>
       </div>
     </div>
-  </div>`;
-
-  return `<div class="two-col">${mixColumn}${milldoColumn}</div>
-  <div style="margin-top:16px">
-    <div style="font-family:'Noto Sans KR',sans-serif;font-size:1.32rem;font-weight:800;color:var(--text);margin-bottom:14px">밀도 상품별 실적 (전 상품)</div>
-    ${productTable(kpi.milldoProductList, kpi.milldoProdQtyTotal, kpi.milldoNet)}
-  </div>`;
+    <div style="margin-top:16px">
+      <div style="${titleStyle}">밀도 상품별 실적</div>
+      ${productTable(kpi.milldoProductList, kpi.milldoProdQtyTotal, kpi.milldoNet)}
+    </div>`;
 }
 function fmtDiff(diff, unit){
   if(diff===null||diff===undefined||!isFinite(diff)) return '-';
@@ -1695,6 +2108,8 @@ function render(res){
         </div>
       </div>
       <div class="actions">
+        <span class="top-search-wrap"><input type="text" id="topSearchInput" class="top-search" placeholder="상품명으로 검색 (예: 아메리카노)" onkeydown="if(event.key==='Enter') topSearch(this.value)"></span>
+        <button class="btn ghost small" onclick="topSearch(document.getElementById('topSearchInput').value)">검색</button>
         <button class="btn save small" onclick="saveDashboardPrompt()">💾 대시보드 저장(Local)</button>
         <button class="btn ghost small" onclick="exportHTML()">HTML</button>
         <button class="btn ghost small" onclick="exportExcel(event)">Excel</button>
@@ -1722,6 +2137,8 @@ function render(res){
         <div class="card"><div class="label">전년 동월 매출</div><div class="value">${kpi.hasPrevYear? fmtWon(kpi.lastYearMonthTotal):'-'}</div></div>
       </div>
     `)}
+
+    ${kpi.storeRanking ? block('RANKING2', `전월 매장 순위(${kpi.storeRanking.rankMonth}월)`, storeRankingBlock(kpi)) : ''}
 
     ${block('TRAFFIC', '조수 · 조단가 / 채널별 매출', `
       <div class="two-col" style="grid-template-columns:1fr 1.4fr">
@@ -1777,9 +2194,22 @@ function render(res){
     ` : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
     ${block('CATEGORY', '카테고리별 매출 — 소분류', kpi.hasProd ? catTable(kpi.subList, kpi.subTotal, true) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
 
-    ${block('MIX', '', kpi.hasProd ? coffeeAndMilldoBlock(kpi) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
+    ${(kpi.hasProd && kpi.hasProdLY) ? block('INSIGHT', '전년 대비 성장 · 부진 TOP 5', insightBlock(kpi)) : ''}
 
-    ${block('RANKING', '상품 판매 TOP 20', kpi.hasProd ? productTable(kpi.productTop20, kpi.prodTotalQty, kpi.prodTotalNet) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
+    ${block('FEATURED', '주요상품 실적', kpi.hasProd ? featuredProductBlock(kpi) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
+
+    ${(kpi.hasProd && kpi.milldoProductList && kpi.milldoProductList.length>0) ? block('MILLDO', '', milldoBlock(kpi)) : ''}
+
+    ${block('NEWMENU', '신메뉴 실적', kpi.hasProd ? newMenuBlock(kpi) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
+
+    ${block('RANKING', '상품 판매 TOP 20', kpi.hasProd ? `
+      <div class="search-box">
+        <span class="search-input-wrap"><input type="text" id="productSearchInput" placeholder="상품명으로 검색 (예: 아메리카노)" oninput="searchProducts(this.value)"></span>
+        <span id="productSearchCount" class="search-count"></span>
+      </div>
+      <div id="productSearchResult"></div>
+      <div id="productTop20Wrap">${productTable(kpi.productTop20, kpi.prodTotalQty, kpi.prodTotalNet)}</div>
+    ` : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
 
     ${block('WASTE', '폐기 현황', wasteBlock(kpi))}
 
@@ -1889,6 +2319,78 @@ function showMidDetail(cat){
     </div>
   `;
 }
+function topSearch(query){
+  const mainInput = document.getElementById('productSearchInput');
+  if(!mainInput) return;
+  mainInput.value = query;
+  searchProducts(query);
+  const target = document.getElementById('productSearchResult') || mainInput;
+  target.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+function searchProducts(query){
+  const resultEl = document.getElementById('productSearchResult');
+  const top20Wrap = document.getElementById('productTop20Wrap');
+  const countEl = document.getElementById('productSearchCount');
+  if(!resultEl || !CURRENT_KPI) return;
+  const q = stripWs(query).toLowerCase();
+  if(!q){
+    resultEl.innerHTML = '';
+    countEl.textContent = '';
+    top20Wrap.style.display = '';
+    return;
+  }
+  top20Wrap.style.display = 'none';
+  const matches = (CURRENT_KPI.productAll||[]).filter(p => stripWs(p.name).toLowerCase().includes(q));
+  countEl.textContent = `${matches.length}개 상품 검색됨`;
+  if(!matches.length){
+    resultEl.innerHTML = `<div class="empty-hint">"${escapeHtml(query)}"와(과) 일치하는 상품이 없습니다.</div>`;
+    return;
+  }
+  const qtySum = matches.reduce((s,p)=>s+p.qty,0);
+  const netSum = matches.reduce((s,p)=>s+p.net,0);
+  const renumbered = matches.map((p,i)=>({...p, rank:i+1}));
+  resultEl.innerHTML = productTable(renumbered, qtySum, CURRENT_KPI.prodTotalNet);
+}
+function storeRankingBlock(kpi){
+  const r = kpi.storeRanking;
+  const salesPercentile = r.ourSalesRank ? r.ourSalesRank/r.totalStores : null;
+  const growthPercentile = r.ourGrowthRank ? r.ourGrowthRank/r.totalGrowthStores : null;
+  function rankRow(e, idx, isGrowth){
+    const isOurs = kpi.storeRanking && ((isGrowth?r.ourGrowthRank:r.ourSalesRank)===idx+1);
+    const cells = isGrowth
+      ? `<td class="${e.growth>=0?'pos':'neg'}">${fmtSignedPct(e.growth)}</td>`
+      : '';
+    return `<tr${isOurs?' style="background:var(--accent-soft)"':''}>
+      <td><span class="rankbadge">${idx+1}</span></td>
+      <td style="text-align:left${isOurs?';font-weight:800;color:var(--accent)':''}">${e.store}${isOurs?' <span class="pill">우리 매장</span>':''}</td>
+      ${cells}
+    </tr>`;
+  }
+  const salesRows = r.salesTop10.map((e,i)=>rankRow(e,i,false)).join('');
+  const growthRows = r.growthTop10.map((e,i)=>rankRow(e,i,true)).join('');
+  const salesColor = (salesPercentile!==null && salesPercentile<=0.5) ? '#1656D1' : '#E4002B';
+  const growthColor = (growthPercentile!==null && growthPercentile<=0.5) ? '#1656D1' : '#E4002B';
+  return `
+    <div class="cards">
+      <div class="card gauge-card">${donutSVG(1-(salesPercentile===null?1:salesPercentile), salesColor, 64, r.ourSalesRank? r.ourSalesRank+'위':'-')}<div><div class="label">${r.rankMonth}월 매출 순위</div><div class="value" style="font-size:1.3rem">${r.ourSalesRank? `${r.ourSalesRank}위 / 총 ${r.totalStores}개점` : '매장 데이터 없음'}</div></div></div>
+      <div class="card gauge-card">${donutSVG(1-(growthPercentile===null?1:growthPercentile), growthColor, 64, r.ourGrowthRank? r.ourGrowthRank+'위':'-')}<div><div class="label">${r.rankMonth}월 전년비 성장률 순위</div><div class="value" style="font-size:1.3rem">${r.ourGrowthRank? `${r.ourGrowthRank}위 / 총 ${r.totalGrowthStores}개점` : '전년 데이터 없음'}</div>${r.ourGrowth!=null?`<div class="sub"><span class="${r.ourGrowth>=0?'pos':'neg'}">${fmtSignedPct(r.ourGrowth)}</span></div>`:''}</div></div>
+    </div>
+    <div class="two-col" style="margin-top:16px">
+      <div class="tablewrap">
+        <table class="dt">
+          <thead><tr><th>순위</th><th style="text-align:left">매장</th></tr></thead>
+          <tbody>${salesRows}</tbody>
+        </table>
+      </div>
+      <div class="tablewrap">
+        <table class="dt">
+          <thead><tr><th>순위</th><th style="text-align:left">매장</th><th>${r.rankMonth}월 전년비 성장률</th></tr></thead>
+          <tbody>${growthRows||'<tr><td colspan="3" class="empty-hint">전년 비교 가능한 매장이 없습니다.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+    `;
+}
 function productTable(list, totalQty, totalNet){
   if(!list.length) return `<div class="empty-hint">데이터가 없습니다.</div>`;
   const hasLY = list.some(x=>x.lyNet!=null);
@@ -1925,6 +2427,25 @@ function productTable(list, totalQty, totalNet){
     <tfoot><tr><td></td><td style="text-align:left">전체 합계</td><td>${fmtNum(totalQty)}</td><td>${fmtWon(totalNet)}</td><td>100.0%</td>${hasLY?'<td></td><td></td><td></td><td></td>':''}<td></td></tr></tfoot>
   </table></div>`;
 }
+function wasteWeekdayTrendSVG(trend){
+  const W = 900, H = 220, padL = 46, padR = 16, padT = 16, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const maxVal = Math.max(...trend.map(d=>d.amt), 1);
+  const n = trend.length;
+  const barW = Math.min(70, (plotW/n) * 0.5);
+  let bars = '';
+  trend.forEach((d,i)=>{
+    const gx = padL + (i+0.5)*(plotW/n);
+    const h = (d.amt/maxVal) * plotH;
+    const isWeekend = (d.label==='토' || d.label==='일');
+    bars += `<rect x="${(gx-barW/2).toFixed(1)}" y="${(padT+plotH-h).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${isWeekend?'#1E3A8A':'var(--accent)'}"/>`;
+    bars += `<text x="${gx.toFixed(1)}" y="${H-10}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text-mute)" font-family="Noto Sans KR">${d.label}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;font-family:'Noto Sans KR'">
+    <line x1="${padL}" y1="${padT+plotH}" x2="${W-padR}" y2="${padT+plotH}" stroke="var(--text)" stroke-width="1.5"/>
+    ${bars}
+  </svg>`;
+}
 function wasteBlock(kpi){
   if(!kpi.hasWaste) return `<div class="empty-hint">재고폐기등록raw 파일이 업로드되지 않았습니다.</div>`;
   if(!kpi.wasteTop20.length) return `<div class="empty-hint">이번 달 폐기 데이터가 없습니다.</div>`;
@@ -1934,10 +2455,27 @@ function wasteBlock(kpi){
     <div class="card"><div class="label">폐기율</div><div class="value">${fmtPct(kpi.wasteRate, 2)}</div><div class="sub">폐기금액(VAT 별도) / 당월 누계 매출</div></div>
   </div>`;
   const rows = kpi.wasteTop20.map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.name}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.unitPrice)}</td><td>${fmtWon(x.amt)}</td><td>${fmtPct(x.rate,2)}</td><td style="text-align:left"><span class="pill">${x.reason||'-'}</span></td></tr>`).join('');
-  return summary + `<div class="tablewrap"><table class="dt">
+  const top20Table = `<div class="tablewrap"><table class="dt">
     <thead><tr><th>순위</th><th style="text-align:left">상품명</th><th>폐기수량</th><th>단가</th><th>폐기금액(VAT 별도)</th><th>폐기율</th><th style="text-align:left">폐기사유</th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
+
+  const reasonRows = (kpi.wasteReasonList||[]).map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.reason}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.amt)}</td><td>${fmtPct(x.share,1)}</td><td class="bar-cell" style="width:120px">${barCell(x.amt, kpi.wasteReasonList[0]?kpi.wasteReasonList[0].amt:0)}</td></tr>`).join('');
+  const reasonTable = `<div class="tablewrap"><table class="dt">
+    <thead><tr><th>순위</th><th style="text-align:left">폐기사유</th><th>폐기수량</th><th>폐기금액(VAT 별도)</th><th>비중</th><th></th></tr></thead>
+    <tbody>${reasonRows}</tbody>
+  </table></div>`;
+
+  const trendChart = (kpi.wasteWeekdayTrend && kpi.wasteWeekdayTrend.length) ? `<div class="tablewrap" style="padding:16px 20px">${wasteWeekdayTrendSVG(kpi.wasteWeekdayTrend)}</div>` : '';
+
+  return summary + `
+    <div class="subgroup-label">폐기 사유별 집계</div>
+    ${reasonTable}
+    <div class="subgroup-label" style="margin-top:20px">요일별 폐기 금액 추이</div>
+    ${trendChart}
+    <div class="subgroup-label" style="margin-top:20px">폐기 상위 TOP 20</div>
+    ${top20Table}
+  `;
 }
 function annualTable(kpi){
   const rows = kpi.annual.map(a=>`<tr style="${a.isCurrent?'background:var(--accent-soft)':''}">
@@ -2245,6 +2783,169 @@ async function sendLike(){
   }
 }
 loadLikeCount();
+
+/* ============================================================
+   9. 업데이트 사항 (누적 변경 이력) — 새 기능/수정이 있을 때마다
+      맨 위에 새 날짜 항목을 추가해주세요. 오래된 항목도 계속 남겨둡니다.
+   ============================================================ */
+const CHANGELOG = [
+  { date: '2026-09-07', items: [
+    '사이즈별(STANDARD / GRAND / VENTI) 판매 금액·비중 그래프 추가',
+  ]},
+  { date: '2026-09-04', items: [
+    '전체 매장 순위(전월 마감 기준: 매출 순위·전년비 성장률 순위) 추가',
+    '전년 대비 성장·부진 소분류/상품 TOP 5 추가',
+    '주요상품 실적, 신메뉴 실적 화면 추가',
+    '폐기 사유별 집계, 요일별 폐기 금액 추이 추가',
+    '상품명 검색 기능 추가',
+  ]},
+  { date: '2026-08-05', items: [
+    'DT 채널 매출 구분 추가',
+    '주요상품 실적, 매출 비중 추가 (룽고/아메리카노/디카페인 아메리카노)',
+    '밀도 상품별 실적 추가(샌드위치, 구움과자 3종 제외)',
+  ]},
+  { date: '2026-07-30', items: [
+    '이 컴퓨터에 대시보드 저장·불러오기 기능 추가(최대 50개)',
+    'Excel · HTML · PDF 다운로드 기능 추가',
+  ]},
+];
+function toggleChangelog(){
+  const panel = document.getElementById('changelogPanel');
+  const arrow = document.getElementById('changelogArrow');
+  const isOpen = panel.style.display !== 'none';
+  if(isOpen){
+    panel.style.display = 'none';
+    arrow.textContent = '▸';
+    return;
+  }
+  if(!panel.dataset.rendered){
+    panel.innerHTML = CHANGELOG.map(entry => `
+      <div class="changelog-date">${entry.date}</div>
+      <ul>${entry.items.map(t=>`<li>${t}</li>`).join('')}</ul>
+    `).join('');
+    panel.dataset.rendered = '1';
+  }
+  panel.style.display = 'block';
+  arrow.textContent = '▾';
+}
+
+/* ============================================================
+   10. 제안 · 아이디어 게시판 (모두가 보는 공용 익명 게시판)
+   jsonblob.com에 저장합니다. 최초 배포 시에는 아직 저장 공간(blob)이 없어서,
+   IDEA_BOARD_BLOB_ID가 비어있으면 이 브라우저가 새로 하나 만들고 그 ID를
+   화면에 안내합니다 — 그 ID를 이 코드에 한 번 붙여넣어 재배포하면, 그 다음부터는
+   모든 사람이 같은 게시판을 보고 씁니다(최초 1회만 필요한 설정).
+   ============================================================ */
+const IDEA_BOARD_BLOB_ID = ''; // 최초 1회 생성된 ID를 여기 붙여넣으세요 (예: '8f1e2a3b-...')
+const IDEA_BOARD_BASE = 'https://jsonblob.com/api/jsonBlob';
+let ideaBoardBlobId = IDEA_BOARD_BLOB_ID;
+
+function escapeIdea(s){
+  return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function renderIdeaList(notes){
+  const listEl = document.getElementById('ideaList');
+  if(!notes || !notes.length){
+    listEl.innerHTML = '<div class="empty-hint">아직 등록된 의견이 없습니다. 첫 의견을 남겨보세요!</div>';
+    return;
+  }
+  listEl.innerHTML = notes.map((n,i)=>({n,i})).reverse().map(({n,i})=>`
+    <div class="idea-item">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div class="idea-text">${escapeIdea(n.text)}</div>
+        <button class="idea-delete-btn" onclick="deleteIdea(${i})" title="삭제 (운영자 전용)">✕</button>
+      </div>
+      <div class="idea-date">${escapeIdea(n.date)}</div>
+    </div>
+  `).join('');
+}
+async function loadIdeaBoard(){
+  const listEl = document.getElementById('ideaList');
+  if(!ideaBoardBlobId){
+    listEl.innerHTML = '<div class="empty-hint">게시판을 처음 준비하고 있어요. "등록" 버튼을 한 번 눌러 시작해주세요.</div>';
+    return;
+  }
+  try{
+    const res = await fetch(`${IDEA_BOARD_BASE}/${ideaBoardBlobId}`, { cache:'no-store' });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json();
+    renderIdeaList(data.notes||[]);
+  }catch(e){
+    console.warn('[아이디어 게시판] 불러오기 실패', e.message);
+    listEl.innerHTML = '<div class="empty-hint">게시판을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.</div>';
+  }
+}
+async function submitIdea(){
+  const input = document.getElementById('ideaInput');
+  const btn = document.getElementById('ideaSubmitBtn');
+  const text = input.value.trim();
+  if(!text) return;
+  btn.disabled = true; btn.textContent = '등록 중...';
+  try{
+    const dateStr = new Date().toLocaleString('ko-KR');
+    if(!ideaBoardBlobId){
+      // 최초 1회: 이 브라우저가 게시판(blob)을 새로 만듭니다.
+      const res = await fetch(IDEA_BOARD_BASE, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ notes:[{text, date:dateStr}] }),
+      });
+      if(!res.ok) throw new Error('생성 실패 HTTP '+res.status);
+      const loc = res.headers.get('Location') || '';
+      const newId = loc.split('/').pop();
+      if(!newId) throw new Error('새 게시판 ID를 확인하지 못했습니다.');
+      ideaBoardBlobId = newId;
+      alert(`게시판이 처음 만들어졌습니다!\n\n운영자에게 아래 ID를 전달해서 코드에 한 번만 저장해두면, 그 다음부터 모든 사람이 같은 게시판을 보게 됩니다.\n\nID: ${newId}`);
+      input.value = '';
+      await loadIdeaBoard();
+      return;
+    }
+    const getRes = await fetch(`${IDEA_BOARD_BASE}/${ideaBoardBlobId}`, { cache:'no-store' });
+    if(!getRes.ok) throw new Error('조회 실패 HTTP '+getRes.status);
+    const data = await getRes.json();
+    const notes = data.notes || [];
+    notes.push({ text, date: dateStr });
+    while(notes.length > 300) notes.shift(); // 너무 많이 쌓이지 않도록 오래된 것부터 정리
+    const putRes = await fetch(`${IDEA_BOARD_BASE}/${ideaBoardBlobId}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ notes }),
+    });
+    if(!putRes.ok) throw new Error('저장 실패 HTTP '+putRes.status);
+    input.value = '';
+    renderIdeaList(notes);
+  }catch(e){
+    console.error('[아이디어 게시판]', e.message);
+    alert('등록 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.');
+  }finally{
+    btn.disabled = false; btn.textContent = '등록';
+  }
+}
+// 삭제는 운영자만 할 수 있도록 비밀번호로 간단히 제한합니다.
+// (공개 파일이라 완벽한 보안은 아니지만, 일반 매장 직원이 실수로/장난으로 지우는 것은 막아줍니다.)
+// 비밀번호를 바꾸고 싶으시면 언제든 말씀해주세요.
+const IDEA_ADMIN_PASSWORD = 'pb2026';
+async function deleteIdea(index){
+  const pw = prompt('삭제하려면 운영자 비밀번호를 입력해주세요.');
+  if(pw === null) return;
+  if(!pw || pw.toLowerCase() !== IDEA_ADMIN_PASSWORD.toLowerCase()){ alert('비밀번호가 올바르지 않습니다.'); return; }
+  if(!confirm('이 의견을 삭제할까요? 삭제하면 되돌릴 수 없습니다.')) return;
+  try{
+    const getRes = await fetch(`${IDEA_BOARD_BASE}/${ideaBoardBlobId}`, { cache:'no-store' });
+    if(!getRes.ok) throw new Error('조회 실패 HTTP '+getRes.status);
+    const data = await getRes.json();
+    const notes = data.notes || [];
+    notes.splice(index, 1);
+    const putRes = await fetch(`${IDEA_BOARD_BASE}/${ideaBoardBlobId}`, {
+      method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ notes }),
+    });
+    if(!putRes.ok) throw new Error('저장 실패 HTTP '+putRes.status);
+    renderIdeaList(notes);
+  }catch(e){
+    console.error('[아이디어 게시판] 삭제 실패', e.message);
+    alert('삭제 중 문제가 발생했어요. 잠시 후 다시 시도해주세요.');
+  }
+}
+loadIdeaBoard();
 
 /* ============================================================
    7. 내보내기 (HTML / Excel / PDF), 파일명 자유 지정
