@@ -160,7 +160,7 @@
     border:1.5px solid var(--border); border-radius:8px; font-family:'Noto Sans KR',sans-serif; font-size:.86rem; color:var(--text);
   }
   .idea-input-row textarea:focus{ outline:none; border-color:var(--accent); }
-  .idea-list{ display:flex; flex-direction:column; gap:8px; max-height:280px; overflow-y:auto; }
+  .idea-list{ display:flex; flex-direction:column; gap:8px; max-height:170px; overflow-y:auto; }
   .idea-item{ padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); }
   .idea-item .idea-text{ font-size:.86rem; color:var(--text); white-space:pre-wrap; word-break:break-word; }
   .idea-item .idea-date{ font-size:.72rem; color:var(--text-mute); margin-top:4px; }
@@ -354,7 +354,7 @@
     <div id="changelogPanel" class="changelog-panel" style="display:none"></div>
 
     <div class="idea-box">
-      <div class="idea-title">💡 제안 · 아이디어 게시판 <span class="idea-sub">(이름 없이 남길 수 있고, 남긴 내용은 모두에게 보여요)</span></div>
+      <div class="idea-title">💡 제안 · 아이디어 게시판</div>
       <div class="idea-input-row">
         <textarea id="ideaInput" maxlength="300" placeholder="대시보드에 바라는 점, 아이디어를 자유롭게 남겨주세요 (익명)"></textarea>
         <button class="btn save small" id="ideaSubmitBtn" onclick="submitIdea()">등록</button>
@@ -2348,8 +2348,7 @@ function searchProducts(query){
   }
   const qtySum = matches.reduce((s,p)=>s+p.qty,0);
   const netSum = matches.reduce((s,p)=>s+p.net,0);
-  const renumbered = matches.map((p,i)=>({...p, rank:i+1}));
-  resultEl.innerHTML = productTable(renumbered, qtySum, CURRENT_KPI.prodTotalNet);
+  resultEl.innerHTML = productTable(matches, qtySum, CURRENT_KPI.prodTotalNet);
 }
 function storeRankingBlock(kpi){
   const r = kpi.storeRanking;
