@@ -2791,6 +2791,7 @@ loadLikeCount();
 const CHANGELOG = [
   { date: '2026-09-07', items: [
     '사이즈별(STANDARD / GRAND / VENTI) 판매 금액·비중 그래프 추가',
+    '제안 · 아이디어 게시판 추가',
   ]},
   { date: '2026-09-04', items: [
     '전체 매장 순위(전월 기준: 매출 순위·전년비 성장률 순위) 추가',
@@ -2915,7 +2916,7 @@ async function submitIdea(){
   try{
     if(!ideaBoardBlobId){
       // 최초 1회: 이 브라우저가 게시판을 새로 만듭니다. 서비스 하나가 안 되면 다음 서비스로 시도합니다.
-      let lastErr = null;
+      const allErrs = [];
       for(const provider of IDEA_PROVIDERS){
         try{
           const res = await fetch(provider.createUrl, {
@@ -2932,10 +2933,10 @@ async function submitIdea(){
           return;
         }catch(err){
           console.warn('[아이디어 게시판] 생성 실패 —', provider.name, err);
-          lastErr = err;
+          allErrs.push(`${provider.name}: ${err.message}`);
         }
       }
-      throw lastErr || new Error('모든 저장소 서비스에 연결하지 못했습니다.');
+      throw new Error('모든 저장소 서비스 실패 — ' + allErrs.join(' / '));
     }
     const provider = getIdeaProvider(ideaProviderName);
     const getRes = await fetch(provider.itemUrl(ideaBoardBlobId), { cache:'no-store' });
