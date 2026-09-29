@@ -375,8 +375,8 @@
       </label>
       <label class="drop optional monthly" id="drop-prev">
         <div class="idx">1-2</div>
-        <div class="name">일자별종합매출현황 (전년 동월)</div>
-        <div class="desc">전년 동월 1일~말일까지의 데이터를 다운받아 넣어주세요.<br>작년 같은 달과 매출을 비교하기 위한 데이터입니다.</div>
+        <div class="name">일자별종합매출현황 (비교 기간)</div>
+        <div class="desc">비교하고 싶은 기간(전년, 전월 등)의 1일~말일까지의 데이터를 다운받아 넣어주세요.<br>해당 기간과 매출을 비교하기 위한 데이터입니다.</div>
         <div class="status" data-slot="prev"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="prev">
       </label>
@@ -396,8 +396,8 @@
       </label>
       <label class="drop optional monthly" id="drop-prodPrev">
         <div class="idx">1-5</div>
-        <div class="name">상품별매출내역조회_일자별(전년 동월)</div>
-        <div class="desc">전년 동월 1일~말일까지의 데이터를 다운받아 넣어주세요.<br>카테고리별 매출(대분류·소분류·상품 상세)의 전년 대비 비교에 사용됩니다.</div>
+        <div class="name">상품별매출내역조회_일자별 (비교 기간)</div>
+        <div class="desc">비교하고 싶은 기간(전년, 전월 등)의 1일~말일까지의 데이터를 다운받아 넣어주세요.<br>카테고리별 매출(대분류·소분류·상품 상세) 비교에 사용됩니다.</div>
         <div class="status" data-slot="prodPrev"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="prodPrev">
       </label>
@@ -1235,6 +1235,51 @@ async function computeAll(){
   const [YEAR, MONTH] = firstDateStr.split('-').map(Number);
   const DIM = daysInMonth(YEAR, MONTH);
 
+  // ---- 비교 기준 기간(전년 · 전월 · 특정월 · 특정 기간) 자동 감지 ----
+  // "일자별종합매출현황(비교 기간)"·"상품별매출내역조회(비교 기간)" 업로드 파일에 실제로 들어있는
+  // 날짜를 보고, 당월 기준 정확히 1년 전(전년 동월)인지, 정확히 1개월 전(전월)인지, 그 외의
+  // 특정 월인지 자동으로 판단합니다. 또한 업로드 파일이 1일~말일 전체가 아니라 일부 기간
+  // (예: 3일~15일)만 담고 있으면 그 범위만 비교 대상으로 삼습니다(REF_PARTIAL/REF_DAY_MIN/MAX).
+  // 2026년 신규 오픈 매장처럼 전년 같은 달 실적이 아예 없는 매장은 이 자리에 "전월" 등 다른 기간의
+  // 데이터를 넣으면 자동으로 해당 기간 대비 비교로 전환됩니다. (하드코딩된 YEAR-1 대신 이 REF_YEAR/REF_MONTH를 씁니다.)
+  let REF_YEAR = YEAR-1, REF_MONTH = MONTH, REF_MODE = 'YOY', REF_LABEL = '전년', REF_LABEL_FULL = '전년동월';
+  let REF_DAY_MIN = 1, REF_DAY_MAX = null, REF_PARTIAL = false;
+  {
+    const refDateCounts = {};
+    const refDaysByYm = {};
+    const addRefDate = (d)=>{
+      if(!d) return;
+      const ym = d.slice(0,7);
+      refDateCounts[ym] = (refDateCounts[ym]||0)+1;
+      const day = +d.slice(8,10);
+      if(!refDaysByYm[ym]) refDaysByYm[ym] = new Set();
+      refDaysByYm[ym].add(day);
+    };
+    prevRows.forEach(r=>addRefDate(normalizeDateStr(r[COL.jeon.date])));
+    if(prodPrevParsed){ prodPrevRows.forEach(r=>addRefDate(normalizeDateStr(r[PCOL_LY.date]))); }
+    const bestYm = Object.keys(refDateCounts).sort((a,b)=>refDateCounts[b]-refDateCounts[a])[0];
+    if(bestYm){
+      const [ry, rm] = bestYm.split('-').map(Number);
+      REF_YEAR = ry; REF_MONTH = rm;
+      const monthsBefore = (YEAR - ry) * 12 + (MONTH - rm);
+      const yy = String(ry).slice(-2);
+      if(monthsBefore === 12){ REF_MODE = 'YOY'; REF_LABEL = '전년'; REF_LABEL_FULL = '전년동월'; }
+      else if(monthsBefore === 1){ REF_MODE = 'MOM'; REF_LABEL = '전월'; REF_LABEL_FULL = '전월'; }
+      else { REF_MODE = 'OTHER'; REF_LABEL = `${yy}년 ${rm}월`; REF_LABEL_FULL = `${yy}년 ${rm}월`; }
+      const daysSet = refDaysByYm[bestYm];
+      const refDIMFull = daysInMonth(ry, rm);
+      REF_DAY_MIN = Math.min(...daysSet);
+      REF_DAY_MAX = Math.max(...daysSet);
+      REF_PARTIAL = !(REF_DAY_MIN===1 && REF_DAY_MAX>=refDIMFull);
+      if(REF_PARTIAL){
+        const periodTxt = `${REF_DAY_MIN}일~${REF_DAY_MAX}일`;
+        REF_LABEL_FULL = `${yy}년 ${rm}월 ${periodTxt}`;
+        REF_LABEL = REF_MODE==='YOY' ? `전년(${periodTxt})` : (REF_MODE==='MOM' ? `전월(${periodTxt})` : `${yy}년 ${rm}월(${periodTxt})`);
+      }
+    }
+  }
+  const REF_DIM = daysInMonth(REF_YEAR, REF_MONTH);
+
   const curByDate = new Map();
   curRows.forEach(r=>{ const d = normalizeDateStr(r[COL.dae.date]); if(d) curByDate.set(d, r); });
   const prevByDate = new Map();
@@ -1384,10 +1429,13 @@ async function computeAll(){
     const dowGroup = isHoliday ? 7 : dow;
 
     let lastYearNet = 0;
-    if(lastYearDailyFromTarget){
+    // 목표매출 파일의 "동요일"/전년 시트 기반 데이터는 진짜 "전년" 실적이므로,
+    // 비교 기준이 전년(YOY)일 때만 사용합니다. 전월/특정월/특정 기간 비교(MOM/OTHER)일 때는
+    // 업로드한 비교 파일의 실제 날짜 데이터를 그대로 사용합니다.
+    if(lastYearDailyFromTarget && REF_MODE==='YOY'){
       lastYearNet = lastYearDailyFromTarget[day-1] || 0;
     } else {
-      const lyDateStr = `${YEAR-1}-${pad2(MONTH)}-${pad2(day)}`;
+      const lyDateStr = `${REF_YEAR}-${pad2(REF_MONTH)}-${pad2(day)}`;
       lastYearNet = prevByDate.has(lyDateStr) ? prevByDate.get(lyDateStr) : 0;
     }
 
@@ -1421,10 +1469,17 @@ async function computeAll(){
 
   const cumNet = daily.reduce((s,d)=>s+d.net,0);
   const cumTarget = daily.filter(d=>d.day<=DAY_CUTOFF).reduce((s,d)=>s+d.target,0);
-  const cumLastYear = daily.filter(d=>d.day<=DAY_CUTOFF).reduce((s,d)=>s+d.lastYearNet,0);
+  // 비교 파일이 1일~말일 전체가 아니라 특정 기간(예: 3일~15일)만 담고 있으면(REF_PARTIAL),
+  // 당월 쪽도 같은 일자 범위만 모아 비교해야 증가율이 왜곡되지 않습니다. "당월 누계 매출" 카드
+  // 자체는 그대로 1일~기준일 합계를 보여주고, 증가율 계산에만 cumNetForCompare를 사용합니다.
+  const compareDayMin = REF_PARTIAL ? REF_DAY_MIN : 1;
+  const compareDayMax = REF_PARTIAL ? Math.min(REF_DAY_MAX, DAY_CUTOFF) : DAY_CUTOFF;
+  const cumNetForCompare = daily.filter(d=>d.day>=compareDayMin && d.day<=compareDayMax).reduce((s,d)=>s+d.net,0);
+  const cumLastYear = daily.filter(d=>d.day>=compareDayMin && d.day<=compareDayMax).reduce((s,d)=>s+d.lastYearNet,0);
   // 전년 매출 기준 = 목표매출 파일의 "25년 매출" 시트(monthlyLastYear12) 값을 우선 사용합니다.
-  // 그 값이 없을 때만(예: 해당 시트를 찾지 못한 경우) 일자별 전년 데이터 합계로 대체합니다.
-  const lastYearMonthTotal = (monthlyLastYear12[MONTH-1] > 0) ? monthlyLastYear12[MONTH-1] : daily.reduce((s,d)=>s+d.lastYearNet,0);
+  // 단, 이는 진짜 "전년" 실적이므로 비교 기준이 전년(YOY)일 때만 사용하고, 그 값이 없을 때만
+  // (예: 해당 시트를 찾지 못한 경우) 일자별 비교 데이터 합계로 대체합니다.
+  const lastYearMonthTotal = (REF_MODE==='YOY' && monthlyLastYear12[MONTH-1] > 0) ? monthlyLastYear12[MONTH-1] : daily.reduce((s,d)=>s+d.lastYearNet,0);
   const cumHeadcount = daily.filter(d=>d.day<=DAY_CUTOFF).reduce((s,d)=>s+d.headcount,0);
 
   const posTotal = daily.reduce((s,d)=>s+d.posNet,0);
@@ -1446,15 +1501,15 @@ async function computeAll(){
   const weekdayStats = groupStats(d=>!d.isHoliday && d.dow<=5);
   const weekendStats = groupStats(d=>d.isHoliday || d.dow>=6);
 
-  // ---- last-year traffic (조수/조단가, 평일·주말) — 전년 raw 파일이 있어야만 계산 가능 (헤드카운트 열은 이 파일에만 있음) ----
-  // 전년도 1달 전체 실적 기준으로 집계합니다 (당월 기준일과 무관).
+  // ---- 비교 기준(전년 또는 전월) traffic (조수/조단가, 평일·주말) — 비교용 raw 파일이 있어야만 계산 가능 (헤드카운트 열은 이 파일에만 있음) ----
+  // 비교 기준 월 전체 실적 기준으로 집계합니다 (당월 기준일과 무관).
   // 평일/주말 구분은 당월과 동일하게 "주말(토·일) + 공휴일" 기준으로 판단합니다 (KR_HOLIDAYS 참조).
   let lastYearTraffic = null;
   if(aoaPrev){
-    const lyDIM = daysInMonth(YEAR-1, MONTH);
+    const lyDIM = REF_DIM;
     const lyDays = [];
     for(let day=1; day<=lyDIM; day++){
-      const lyDateStr = `${YEAR-1}-${pad2(MONTH)}-${pad2(day)}`;
+      const lyDateStr = `${REF_YEAR}-${pad2(REF_MONTH)}-${pad2(day)}`;
       const row = prevRawByDate.get(lyDateStr);
       if(!row) continue;
       lyDays.push({
@@ -1497,7 +1552,7 @@ async function computeAll(){
     const d = normalizeDateStr(r[PCOL_LY.date]);
     if(!d) return false;
     const [y,m,day] = d.split('-').map(Number);
-    return y===(YEAR-1) && m===MONTH && day<=DAY_CUTOFF;
+    return y===REF_YEAR && m===REF_MONTH && day<=DAY_CUTOFF;
   });
 
   // ---- 룽고/아메리카노/디카페인 아메리카노 비중, 밀도 매출 비중 (소분류 하단 도넛 그래프용) ----
@@ -1837,7 +1892,7 @@ async function computeAll(){
     storeRanking,
     coffeeMix, milldoNet, milldoQty, milldoProductList, milldoProdQtyTotal,
     storeMatchMode: !targetWB ? 'none' : (matchedMultiStore ? 'auto' : 'legacy'),
-    daily, cumNet, cumTarget, cumLastYear, lastYearMonthTotal, monthTargetTotal,
+    daily, cumNet, cumNetForCompare, cumTarget, cumLastYear, lastYearMonthTotal, monthTargetTotal,
     posTotal, kioskTotal, dtTotal, deliveryTotal, avgHeadcount, avgHeadcost,
     weekdayStats, weekendStats, lastYearTraffic,
     midList, midTotal, subList, subTotal, midDetailList,
@@ -1847,7 +1902,11 @@ async function computeAll(){
     wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, hasWaste: !!aoaWaste,
     wasteReasonList, wasteWeekdayTrend,
     hasProd: !!aoaProd, hasProdLY, hasPos: !!aoaPos, hasTarget: !!targetWB,
-    hasPrevYear: !!aoaPrev || !!lastYearDailyFromTarget,
+    hasPrevYear: !!aoaPrev || (REF_MODE==='YOY' && !!lastYearDailyFromTarget),
+    refPartial: REF_PARTIAL, refDayMin: REF_DAY_MIN, refDayMax: REF_DAY_MAX,
+    refMode: REF_MODE, refLabel: REF_LABEL, refLabelFull: REF_LABEL_FULL, REF_YEAR, REF_MONTH,
+    refPeriodLabel: REF_MODE==='YOY' ? '전년동기' : (REF_MODE==='MOM' ? '전월동기' : `${REF_LABEL_FULL} 동기`),
+    refMonthLabel: REF_MODE==='YOY' ? '전년동월' : (REF_MODE==='MOM' ? '전월' : REF_LABEL_FULL),
     dowStats, forecast, annual, annualTargetSum, annualActualSum, annualLastYearSum
   };
 }
@@ -1856,6 +1915,9 @@ async function computeAll(){
    4. RENDER
    ============================================================ */
 let CURRENT_KPI = null;
+// kpi를 직접 받지 않는 일부 하위 렌더 함수(dowCard, catTable, growthTable 등)에서 쓰는
+// 비교 기준 라벨. render() 호출 시마다 kpi.refLabel 등을 반영해 갱신됩니다.
+let REF_LABEL = '전년', REF_PERIOD_LABEL = '전년동기', REF_LABEL_FULL = '전년동월', REF_MONTH_LABEL = '전년동월';
 
 function donutSVG(pct, colorHex, size, label){
   const px = size || 64;
@@ -1976,30 +2038,30 @@ function growthTable(items, positive){
     <td class="${positive?'pos':'neg'}">${fmtSignedPct(x.growth)}</td>
   </tr>`).join('');
   return `<div class="tablewrap"><table class="dt">
-    <thead><tr><th>순위</th><th style="text-align:left">이름</th><th>당월 매출</th><th>전년 매출</th><th>성장률</th></tr></thead>
+    <thead><tr><th>순위</th><th style="text-align:left">이름</th><th>당월 매출</th><th>${REF_LABEL} 매출</th><th>성장률</th></tr></thead>
     <tbody>${rows}</tbody>
   </table></div>`;
 }
 function insightBlock(kpi){
   return `<div class="two-col">
     <div>
-      <div class="subgroup-label">전년 대비 성장 소분류 TOP 5</div>
+      <div class="subgroup-label">${kpi.refLabel} 대비 성장 소분류 TOP 5</div>
       ${growthTable(kpi.subGrowthUp, true)}
     </div>
     <div>
-      <div class="subgroup-label">전년 대비 부진 소분류 TOP 5</div>
+      <div class="subgroup-label">${kpi.refLabel} 대비 부진 소분류 TOP 5</div>
       ${growthTable(kpi.subGrowthDown, false)}
     </div>
     <div>
-      <div class="subgroup-label">전년 대비 성장 상품 TOP 5</div>
+      <div class="subgroup-label">${kpi.refLabel} 대비 성장 상품 TOP 5</div>
       ${growthTable(kpi.prodGrowthUp, true)}
     </div>
     <div>
-      <div class="subgroup-label">전년 대비 부진 상품 TOP 5</div>
+      <div class="subgroup-label">${kpi.refLabel} 대비 부진 상품 TOP 5</div>
       ${growthTable(kpi.prodGrowthDown, false)}
     </div>
   </div>
-  <p class="note">전년 매출이 1만원 미만으로 아주 작은 항목은 소수 판매만으로 성장률이 크게 튈 수 있어 순위 대상에서 제외했습니다.</p>`;
+  <p class="note">${kpi.refLabel} 매출이 1만원 미만으로 아주 작은 항목은 소수 판매만으로 성장률이 크게 튈 수 있어 순위 대상에서 제외했습니다.</p>`;
 }
 function productMixChartsBlock(kpi){
   const mix = kpi.coffeeMix || {lungo:0, americano:0, decaf:0};
@@ -2135,7 +2197,8 @@ function render(res){
 
   const kpi = res;
   CURRENT_KPI = kpi;
-  const cumGrowth = kpi.cumLastYear>0 ? (kpi.cumNet/kpi.cumLastYear - 1) : null;
+  REF_LABEL = kpi.refLabel || '전년'; REF_PERIOD_LABEL = kpi.refPeriodLabel || '전년동기'; REF_LABEL_FULL = kpi.refLabelFull || '전년동월'; REF_MONTH_LABEL = kpi.refMonthLabel || '전년동월';
+  const cumGrowth = kpi.cumLastYear>0 ? (kpi.cumNetForCompare/kpi.cumLastYear - 1) : null;
   const cumAchieve = kpi.cumTarget>0 ? kpi.cumNet/kpi.cumTarget : 0;
   const monthAchieve = kpi.monthTargetTotal>0 ? kpi.forecast/kpi.monthTargetTotal : 0;
   const forecastGrowth = kpi.lastYearMonthTotal>0 ? (kpi.forecast/kpi.lastYearMonthTotal - 1) : null;
@@ -2164,20 +2227,20 @@ function render(res){
     ${block('KPI', `당월 누계 실적(1일~${kpi.DAY_CUTOFF}일)`, `
       <div class="cards">
         <div class="card"><div class="label">당월 누계 매출</div><div class="value">${fmtWon(kpi.cumNet)}</div>
-          <div class="sub">${kpi.hasPrevYear? `전년비 <span class="${cumGrowth>=0?'pos':'neg'}">${fmtSignedPct(cumGrowth)}</span>` : '전년 데이터 없음'}</div></div>
+          <div class="sub">${kpi.hasPrevYear? `${kpi.refLabel}비 <span class="${cumGrowth>=0?'pos':'neg'}">${fmtSignedPct(cumGrowth)}</span>` : `${kpi.refLabel} 데이터 없음`}</div></div>
         <div class="card"><div class="label">누계 목표</div><div class="value">${fmtWon(kpi.cumTarget)}</div></div>
         <div class="card gauge-card">${gaugeSVG(cumAchieve)}<div><div class="label">누계 달성률</div><div class="value" style="font-size:1.3rem;color:${cumAchieve>=1?'var(--rise)':'var(--negative)'}">${fmtPct(cumAchieve)}</div></div></div>
-        <div class="card"><div class="label">전년 동기 매출</div><div class="value">${kpi.hasPrevYear? fmtWon(kpi.cumLastYear) : '-'}</div></div>
+        <div class="card"><div class="label">${kpi.refPeriodLabel} 매출</div><div class="value">${kpi.hasPrevYear? fmtWon(kpi.cumLastYear) : '-'}</div></div>
       </div>
     `)}
 
     ${block('FORECAST', '당월 예상 실적(1일~말일)', `
       <div class="cards">
         <div class="card"><div class="label">예상 매출</div><div class="value">${fmtWon(kpi.forecast)}</div>
-          <div class="sub">${kpi.hasPrevYear? `전년비 <span class="${forecastGrowth>=0?'pos':'neg'}">${fmtSignedPct(forecastGrowth)}</span>` : (kpi.DAY_CUTOFF<8 ? '누계 실적/목표 비율 기반 추정' : '요일별 평균 매출 기반 추정')}</div></div>
+          <div class="sub">${kpi.hasPrevYear? `${kpi.refLabel}비 <span class="${forecastGrowth>=0?'pos':'neg'}">${fmtSignedPct(forecastGrowth)}</span>` : (kpi.DAY_CUTOFF<8 ? '누계 실적/목표 비율 기반 추정' : '요일별 평균 매출 기반 추정')}</div></div>
         <div class="card"><div class="label">당월 목표</div><div class="value">${fmtWon(kpi.monthTargetTotal)}</div></div>
         <div class="card gauge-card">${gaugeSVG(monthAchieve)}<div><div class="label">목표 달성률</div><div class="value" style="font-size:1.3rem;color:${monthAchieve>=1?'var(--rise)':'var(--negative)'}">${fmtPct(monthAchieve)}</div></div></div>
-        <div class="card"><div class="label">전년 동월 매출</div><div class="value">${kpi.hasPrevYear? fmtWon(kpi.lastYearMonthTotal):'-'}</div></div>
+        <div class="card"><div class="label">${kpi.refMonthLabel} 매출</div><div class="value">${kpi.hasPrevYear? fmtWon(kpi.lastYearMonthTotal):'-'}</div></div>
       </div>
     `)}
 
@@ -2190,16 +2253,16 @@ function render(res){
             <div class="subgroup-label">당월</div>
             <div class="cards" style="grid-template-columns:repeat(2,1fr)">
               <div class="card"><div class="label">일평균 조수</div><div class="value">${fmtNum(kpi.avgHeadcount)}<span style="font-size:.9rem;color:var(--text-mute)">명</span></div>
-                ${kpi.lastYearTraffic? `<div class="sub">전년비 <span class="${diffClass(kpi.avgHeadcount-kpi.lastYearTraffic.avgHeadcount)}">${fmtDiff(kpi.avgHeadcount-kpi.lastYearTraffic.avgHeadcount,'명')}</span></div>` : ''}</div>
+                ${kpi.lastYearTraffic? `<div class="sub">${kpi.refLabel}비 <span class="${diffClass(kpi.avgHeadcount-kpi.lastYearTraffic.avgHeadcount)}">${fmtDiff(kpi.avgHeadcount-kpi.lastYearTraffic.avgHeadcount,'명')}</span></div>` : ''}</div>
               <div class="card"><div class="label">조단가</div><div class="value">${fmtWon(kpi.avgHeadcost)}</div>
-                ${kpi.lastYearTraffic? `<div class="sub">전년비 <span class="${diffClass(kpi.avgHeadcost-kpi.lastYearTraffic.headcost)}">${fmtDiff(kpi.avgHeadcost-kpi.lastYearTraffic.headcost,'원')}</span></div>` : ''}</div>
+                ${kpi.lastYearTraffic? `<div class="sub">${kpi.refLabel}비 <span class="${diffClass(kpi.avgHeadcost-kpi.lastYearTraffic.headcost)}">${fmtDiff(kpi.avgHeadcost-kpi.lastYearTraffic.headcost,'원')}</span></div>` : ''}</div>
             </div>
           </div>
           <div class="subgroup">
-            <div class="subgroup-label">전년</div>
+            <div class="subgroup-label">${kpi.refLabel}</div>
             <div class="cards" style="grid-template-columns:repeat(2,1fr)">
-              <div class="card"><div class="label">조수</div><div class="value">${kpi.lastYearTraffic? fmtNum(kpi.lastYearTraffic.avgHeadcount) : '-'}${kpi.lastYearTraffic?'<span style="font-size:.9rem;color:var(--text-mute)">명</span>':''}</div>${kpi.lastYearTraffic?'':'<div class="sub">전년 파일 필요</div>'}</div>
-              <div class="card"><div class="label">조단가</div><div class="value">${kpi.lastYearTraffic? fmtWon(kpi.lastYearTraffic.headcost) : '-'}</div>${kpi.lastYearTraffic?'':'<div class="sub">전년 파일 필요</div>'}</div>
+              <div class="card"><div class="label">조수</div><div class="value">${kpi.lastYearTraffic? fmtNum(kpi.lastYearTraffic.avgHeadcount) : '-'}${kpi.lastYearTraffic?'<span style="font-size:.9rem;color:var(--text-mute)">명</span>':''}</div>${kpi.lastYearTraffic?'':`<div class="sub">${kpi.refLabel} 파일 필요</div>`}</div>
+              <div class="card"><div class="label">조단가</div><div class="value">${kpi.lastYearTraffic? fmtWon(kpi.lastYearTraffic.headcost) : '-'}</div>${kpi.lastYearTraffic?'':`<div class="sub">${kpi.refLabel} 파일 필요</div>`}</div>
             </div>
           </div>
         </div>
@@ -2222,7 +2285,7 @@ function render(res){
         </div>
       </div>
       <div class="subgroup">
-        <div class="subgroup-label">전년</div>
+        <div class="subgroup-label">${kpi.refLabel}</div>
         <div class="dow-grid">
           ${kpi.lastYearTraffic ? dowCard('평일 (월~금)', kpi.lastYearTraffic.weekdayStats) : dowCardEmpty('평일 (월~금)')}
           ${kpi.lastYearTraffic ? dowCard('주말 (토·일)', kpi.lastYearTraffic.weekendStats) : dowCardEmpty('주말 (토·일)')}
@@ -2237,7 +2300,7 @@ function render(res){
     ` : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
     ${block('CATEGORY', '카테고리별 매출 — 소분류', kpi.hasProd ? catTable(kpi.subList, kpi.subTotal, true) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
 
-    ${(kpi.hasProd && kpi.hasProdLY) ? block('INSIGHT', '전년 대비 성장 · 부진 TOP 5', insightBlock(kpi)) : ''}
+    ${(kpi.hasProd && kpi.hasProdLY) ? block('INSIGHT', `${kpi.refLabel} 대비 성장 · 부진 TOP 5`, insightBlock(kpi)) : ''}
 
     ${block('FEATURED', '주요상품 실적', kpi.hasProd ? featuredProductBlock(kpi) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
 
@@ -2292,11 +2355,11 @@ function dowCard(title, stats, lyStats){
   const growthNet = (lyStats && lyStats.avgNet>0) ? (stats.avgNet-lyStats.avgNet)/lyStats.avgNet : null;
   const diffHc = lyStats ? stats.avgHeadcount - lyStats.avgHeadcount : null;
   const diffHcost = lyStats ? stats.avgHeadcost - lyStats.avgHeadcost : null;
-  const extra = lyStats ? `<div class="sub" style="margin-top:4px">전년비 매출 <span class="${growthNet===null?'':(growthNet>=0?'pos':'neg')}">${growthNet===null?'-':fmtSignedPct(growthNet)}</span> · 조수 <span class="${diffClass(diffHc)}">${fmtDiff(diffHc,'명')}</span> · 조단가 <span class="${diffClass(diffHcost)}">${fmtDiff(diffHcost,'원')}</span></div>` : '';
+  const extra = lyStats ? `<div class="sub" style="margin-top:4px">${REF_LABEL}비 매출 <span class="${growthNet===null?'':(growthNet>=0?'pos':'neg')}">${growthNet===null?'-':fmtSignedPct(growthNet)}</span> · 조수 <span class="${diffClass(diffHc)}">${fmtDiff(diffHc,'명')}</span> · 조단가 <span class="${diffClass(diffHcost)}">${fmtDiff(diffHcost,'원')}</span></div>` : '';
   return `<div class="card"><div class="label">${title}</div><div class="value" style="font-size:1.2rem">${fmtWon(stats.avgNet)}<span style="font-size:.7rem;color:var(--text-mute)"> /일</span></div><div class="sub">일평균 조수 ${fmtNum(stats.avgHeadcount)}명 · 일평균 조단가 ${fmtWon(stats.avgHeadcost)}</div>${extra}</div>`;
 }
 function dowCardEmpty(title){
-  return `<div class="card"><div class="label">${title}</div><div class="value" style="font-size:1.2rem">-</div><div class="sub">전년 파일 필요</div></div>`;
+  return `<div class="card"><div class="label">${title}</div><div class="value" style="font-size:1.2rem">-</div><div class="sub">${REF_LABEL} 파일 필요</div></div>`;
 }
 function catTable(list, total, isSub, clickable){
   if(!list.length || total===0) return `<div class="empty-hint">데이터가 없습니다. 상품별매출내역조회 파일의 매출일자·중분류·소분류 열 위치를 확인해주세요.</div>`;
@@ -2321,7 +2384,7 @@ function catTable(list, total, isSub, clickable){
   const groupHead = hasLY ? `<tr>
       <th rowspan="2" style="vertical-align:bottom">${isSub?'소분류':'대분류'}</th>
       <th colspan="4" class="group-head cur">당월</th>
-      <th colspan="3" class="group-head ly">전년 동기</th>
+      <th colspan="3" class="group-head ly">${REF_PERIOD_LABEL}</th>
       <th rowspan="2"></th>
     </tr>
     <tr>
@@ -2456,7 +2519,7 @@ function productTable(list, totalQty, totalNet){
       <th rowspan="2" style="vertical-align:bottom">순위</th>
       <th rowspan="2" style="vertical-align:bottom;text-align:left">상품명</th>
       <th colspan="4" class="group-head cur">당월</th>
-      <th colspan="3" class="group-head ly">전년 동기</th>
+      <th colspan="3" class="group-head ly">${REF_PERIOD_LABEL}</th>
       <th rowspan="2"></th>
     </tr>
     <tr>
@@ -2831,6 +2894,9 @@ loadLikeCount();
       맨 위에 새 날짜 항목을 추가해주세요. 오래된 항목도 계속 남겨둡니다.
    ============================================================ */
 const CHANGELOG = [
+  { date: '2026-09-29', items: [
+    '비교 기간 자동 인식 기능 추가(전년/전월/특정 기간)',
+  ]},
   { date: '2026-09-28', items: [
     'Excel 다운로드 파일 : 주요상품·신메뉴 실적 시트 추가',
   ]},
@@ -3031,7 +3097,17 @@ async function exportPDF(evt){
     const ptHeight = canvas.height * ptWidth / canvas.width;
     const pdf = new jsPDF({ orientation:'p', unit:'pt', format:[ptWidth, ptHeight] });
     pdf.addImage(imgData, 'PNG', 0, 0, ptWidth, ptHeight);
-    pdf.save(name.toLowerCase().endsWith('.pdf') ? name : name + '.pdf');
+    const fileName = name.toLowerCase().endsWith('.pdf') ? name : name + '.pdf';
+    // jsPDF의 기본 save()는 일부 브라우저(특히 download 속성 미지원 환경)에서
+    // 새/현재 탭에 PDF를 바로 여는 방식으로 대체 동작할 수 있어, 직접 Blob URL을
+    // 만들어 download 속성이 있는 링크로만 저장(다운로드)되도록 처리합니다.
+    const blobUrl = URL.createObjectURL(pdf.output('blob'));
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(blobUrl), 4000);
   }catch(err){
     console.error(err);
     alert('PDF 저장 중 오류가 발생했습니다: ' + err.message);
@@ -3109,7 +3185,7 @@ async function buildExcelBlob(kpi){
 
   const cumAchieve = kpi.cumTarget>0 ? kpi.cumNet/kpi.cumTarget : 0;
   const monthAchieve = kpi.monthTargetTotal>0 ? kpi.forecast/kpi.monthTargetTotal : 0;
-  const cumGrowth = kpi.cumLastYear>0 ? (kpi.cumNet/kpi.cumLastYear - 1) : null;
+  const cumGrowth = kpi.cumLastYear>0 ? (kpi.cumNetForCompare/kpi.cumLastYear - 1) : null;
   const forecastGrowth = kpi.lastYearMonthTotal>0 ? (kpi.forecast/kpi.lastYearMonthTotal - 1) : null;
   const hcDiff = kpi.lastYearTraffic ? kpi.avgHeadcount - kpi.lastYearTraffic.avgHeadcount : null;
   const costDiff = kpi.lastYearTraffic ? kpi.avgHeadcost - kpi.lastYearTraffic.headcost : null;
@@ -3117,14 +3193,14 @@ async function buildExcelBlob(kpi){
   kpiBlock(4, 2, 3, `당월 누계 매출(1일~${kpi.DAY_CUTOFF}일)`, kpi.cumNet, '#,##0"원"');
   kpiBlock(4, 5, 3, '당월 누계 목표', kpi.cumTarget, '#,##0"원"');
   kpiBlock(4, 8, 2, '누계 달성률', cumAchieve, '0.0%', achieveColor(cumAchieve));
-  kpiBlock(4, 10, 2, '전년 동기 매출', kpi.cumLastYear, '#,##0"원"');
-  kpiBlock(4, 12, 2, '전년비 성장률', cumGrowth===null?'-':cumGrowth, cumGrowth===null?undefined:'+0.0%;-0.0%', riseFallColor(cumGrowth));
+  kpiBlock(4, 10, 2, `${kpi.refPeriodLabel} 매출`, kpi.cumLastYear, '#,##0"원"');
+  kpiBlock(4, 12, 2, `${kpi.refLabel}비 성장률`, cumGrowth===null?'-':cumGrowth, cumGrowth===null?undefined:'+0.0%;-0.0%', riseFallColor(cumGrowth));
 
   kpiBlock(7, 2, 3, '당월 예상 실적(1일~말일)', kpi.forecast, '#,##0"원"');
   kpiBlock(7, 5, 3, '당월 목표', kpi.monthTargetTotal, '#,##0"원"');
   kpiBlock(7, 8, 2, '목표 달성률', monthAchieve, '0.0%', achieveColor(monthAchieve));
-  kpiBlock(7, 10, 2, '전년 동월 매출', kpi.lastYearMonthTotal, '#,##0"원"');
-  kpiBlock(7, 12, 2, '전년비 성장률', forecastGrowth===null?'-':forecastGrowth, forecastGrowth===null?undefined:'+0.0%;-0.0%', riseFallColor(forecastGrowth));
+  kpiBlock(7, 10, 2, `${kpi.refMonthLabel} 매출`, kpi.lastYearMonthTotal, '#,##0"원"');
+  kpiBlock(7, 12, 2, `${kpi.refLabel}비 성장률`, forecastGrowth===null?'-':forecastGrowth, forecastGrowth===null?undefined:'+0.0%;-0.0%', riseFallColor(forecastGrowth));
 
   const channelTotal = kpi.posTotal + kpi.kioskTotal + kpi.dtTotal;
   const posShare = channelTotal>0? kpi.posTotal/channelTotal:0;
@@ -3144,9 +3220,9 @@ async function buildExcelBlob(kpi){
   const weekdayGrowth = (kpi.lastYearTraffic && kpi.lastYearTraffic.weekdayStats.avgNet>0) ? (kpi.weekdayStats.avgNet - kpi.lastYearTraffic.weekdayStats.avgNet)/kpi.lastYearTraffic.weekdayStats.avgNet : null;
   const weekendGrowth = (kpi.lastYearTraffic && kpi.lastYearTraffic.weekendStats.avgNet>0) ? (kpi.weekendStats.avgNet - kpi.lastYearTraffic.weekendStats.avgNet)/kpi.lastYearTraffic.weekendStats.avgNet : null;
   kpiBlock(10, 10, 2, '평일 일평균', kpi.weekdayStats.avgNet, '#,##0"원"');
-  merge1(12,10,12,11); const wdG = ws1.getCell(12,10); wdG.value = weekdayGrowth===null?'-':weekdayGrowth; styleCell(ws1, wdG, {font:{size:10,color: weekdayGrowth===null?{argb:'FF6B3A2A'}:{argb:riseFallColor(weekdayGrowth)}}, numFmt: weekdayGrowth===null?undefined:'"전년비 "+0.0%;"전년비 "-0.0%', fill:CREAM, border:false, align:{horizontal:'center'}});
+  merge1(12,10,12,11); const wdG = ws1.getCell(12,10); wdG.value = weekdayGrowth===null?'-':weekdayGrowth; styleCell(ws1, wdG, {font:{size:10,color: weekdayGrowth===null?{argb:'FF6B3A2A'}:{argb:riseFallColor(weekdayGrowth)}}, numFmt: weekdayGrowth===null?undefined:`"${kpi.refLabel}비 "+0.0%;"${kpi.refLabel}비 "-0.0%`, fill:CREAM, border:false, align:{horizontal:'center'}});
   kpiBlock(10, 12, 2, '주말 일평균', kpi.weekendStats.avgNet, '#,##0"원"');
-  merge1(12,12,12,13); const weG = ws1.getCell(12,12); weG.value = weekendGrowth===null?'-':weekendGrowth; styleCell(ws1, weG, {font:{size:10,color: weekendGrowth===null?{argb:'FF6B3A2A'}:{argb:riseFallColor(weekendGrowth)}}, numFmt: weekendGrowth===null?undefined:'"전년비 "+0.0%;"전년비 "-0.0%', fill:CREAM, border:false, align:{horizontal:'center'}});
+  merge1(12,12,12,13); const weG = ws1.getCell(12,12); weG.value = weekendGrowth===null?'-':weekendGrowth; styleCell(ws1, weG, {font:{size:10,color: weekendGrowth===null?{argb:'FF6B3A2A'}:{argb:riseFallColor(weekendGrowth)}}, numFmt: weekendGrowth===null?undefined:`"${kpi.refLabel}비 "+0.0%;"${kpi.refLabel}비 "-0.0%`, fill:CREAM, border:false, align:{horizontal:'center'}});
 
   function sectionHeader1(rr, text, color){
     merge1(rr,2,rr,21);
@@ -3166,10 +3242,10 @@ async function buildExcelBlob(kpi){
   kpiBlock(15, 2, 2, '당월 조수', kpi.avgHeadcount, '#,##0"명"');
   kpiBlock(15, 4, 2, '당월 조단가', kpi.avgHeadcost, '#,##0"원"');
   if(kpi.lastYearTraffic){
-    kpiBlock(15, 6, 2, '전년도 조수', kpi.lastYearTraffic.avgHeadcount, '#,##0"명"');
-    kpiBlock(15, 8, 2, '전년도 조단가', kpi.lastYearTraffic.headcost, '#,##0"원"');
-    kpiBlock(15, 10, 2, '조수 전년비', hcDiff, '+#,##0"명";-#,##0"명"', riseFallColor(hcDiff));
-    kpiBlock(15, 12, 2, '조단가 전년비', costDiff, '+#,##0"원";-#,##0"원"', riseFallColor(costDiff));
+    kpiBlock(15, 6, 2, `${kpi.refLabel} 조수`, kpi.lastYearTraffic.avgHeadcount, '#,##0"명"');
+    kpiBlock(15, 8, 2, `${kpi.refLabel} 조단가`, kpi.lastYearTraffic.headcost, '#,##0"원"');
+    kpiBlock(15, 10, 2, `조수 ${kpi.refLabel}비`, hcDiff, '+#,##0"명";-#,##0"명"', riseFallColor(hcDiff));
+    kpiBlock(15, 12, 2, `조단가 ${kpi.refLabel}비`, costDiff, '+#,##0"원";-#,##0"원"', riseFallColor(costDiff));
   }
 
   let r = 19;
@@ -3210,7 +3286,7 @@ async function buildExcelBlob(kpi){
   const ws2 = wb.addWorksheet('일별입력', { views:[{showGridLines:false}] });
   setColWidths(ws2, false);
   ws2.getColumn(2).width = 12;
-  const dayHeaders = ['일자','요일','순매출','일자별목표','달성률','전년매출','전년비','조수','조단가','POS','POS 비중','KIOSK','KIOSK 비중','DT','DT 비중','배달','배달 비중(전체매출 대비)'];
+  const dayHeaders = ['일자','요일','순매출','일자별목표','달성률',`${kpi.refLabel}매출`,`${kpi.refLabel}비`,'조수','조단가','POS','POS 비중','KIOSK','KIOSK 비중','DT','DT 비중','배달','배달 비중(전체매출 대비)'];
   dayHeaders.forEach((h,i)=>{ const c=ws2.getCell(2,2+i); c.value=h; styleCell(ws2,c,{fill:GRAYHEAD, font:{bold:true,size:10}}); });
   kpi.daily.forEach((d,idx)=>{
     const rr = 3+idx;
@@ -3232,7 +3308,7 @@ async function buildExcelBlob(kpi){
   {
     const rrTotal = 3 + kpi.daily.length;
     const totalAchieve = kpi.cumTarget>0 ? kpi.cumNet/kpi.cumTarget : null;
-    const totalYoy = kpi.cumLastYear>0 ? (kpi.cumNet-kpi.cumLastYear)/kpi.cumLastYear : null;
+    const totalYoy = kpi.cumLastYear>0 ? (kpi.cumNetForCompare-kpi.cumLastYear)/kpi.cumLastYear : null;
     const totalVals = ['합계', '', kpi.cumNet, kpi.cumTarget, totalAchieve, kpi.cumLastYear, totalYoy, kpi.avgHeadcount, kpi.avgHeadcost, kpi.posTotal, posShare, kpi.kioskTotal, kioskShare, kpi.dtTotal, dtShare, kpi.deliveryTotal, deliveryShare];
     const totalFmts = [null,null,'#,##0"원"','#,##0"원"','0.0%','#,##0"원"','+0.0%;-0.0%','#,##0"명"','#,##0"원"','#,##0"원"','0.0%','#,##0"원"','0.0%','#,##0"원"','0.0%','#,##0"원"','0.0%'];
     totalVals.forEach((v,i)=>{
@@ -3260,8 +3336,8 @@ async function buildExcelBlob(kpi){
     headers.forEach((h,i)=>{ const c = ws3.getCell(rr, startCol+i); c.value=h; styleCell(ws3,c,{fill:GRAYHEAD, font:{bold:true,size:10}}); });
   }
   let r3 = 2;
-  sectionHeader3(r3, '카테고리별 매출 — 대분류 (당월 / 전년 비교)'); r3+=1;
-  tableHeaderRow3(r3, ['대분류','수량','매출(VAT 별도)','비중','전년수량','전년매출','성장률','전년비중'], 2); r3+=1;
+  sectionHeader3(r3, `카테고리별 매출 — 대분류 (당월 / ${kpi.refLabel} 비교)`); r3+=1;
+  tableHeaderRow3(r3, ['대분류','수량','매출(VAT 별도)','비중',`${kpi.refLabel}수량`,`${kpi.refLabel}매출`,'성장률',`${kpi.refLabel}비중`], 2); r3+=1;
   kpi.midList.forEach(x=>{
     const growth = (x.lyNet!=null && x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null;
     const vals = [x.name, x.qty, x.net, x.share, x.lyQty, x.lyNet, growth, x.lyShare];
@@ -3291,8 +3367,8 @@ async function buildExcelBlob(kpi){
     r3 += 1;
   }
   r3 += 1;
-  sectionHeader3(r3, '카테고리별 매출 — 소분류 (당월 / 전년 비교)'); r3+=1;
-  tableHeaderRow3(r3, ['소분류','수량','매출(VAT 별도)','비중','전년수량','전년매출','성장률','전년비중'], 2); r3+=1;
+  sectionHeader3(r3, `카테고리별 매출 — 소분류 (당월 / ${kpi.refLabel} 비교)`); r3+=1;
+  tableHeaderRow3(r3, ['소분류','수량','매출(VAT 별도)','비중',`${kpi.refLabel}수량`,`${kpi.refLabel}매출`,'성장률',`${kpi.refLabel}비중`], 2); r3+=1;
   kpi.subList.forEach(x=>{
     const growth = (x.lyNet!=null && x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null;
     const vals = [x.name, x.qty, x.net, x.share, x.lyQty, x.lyNet, growth, x.lyShare];
@@ -3323,7 +3399,7 @@ async function buildExcelBlob(kpi){
   }
   r3 += 1;
   sectionHeader3(r3, '판매 상위 TOP 20'); r3+=1;
-  tableHeaderRow3(r3, ['순위','상품명','수량','매출(VAT 별도)','비중','성장률','전년동기 수량','전년동기 매출','전년동기 비중'], 2); r3+=1;
+  tableHeaderRow3(r3, ['순위','상품명','수량','매출(VAT 별도)','비중','성장률',`${kpi.refPeriodLabel} 수량`,`${kpi.refPeriodLabel} 매출`,`${kpi.refPeriodLabel} 비중`], 2); r3+=1;
   kpi.productTop20.forEach(x=>{
     const growth = (x.lyNet!=null && x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null;
     const vals = [x.rank, x.name, x.qty, x.net, x.share, growth, x.lyQty, x.lyNet, x.lyShare];
@@ -3361,7 +3437,7 @@ async function buildExcelBlob(kpi){
   ws3bTitle.value = `전체 상품 매출 순위 (매출액 기준, 총 ${kpi.productAll.length}개)`;
   styleCell(ws3b, ws3bTitle, {fill:NAVY, font:WHITEBOLD, align:{horizontal:'left'}, border:false});
   ws3b.getRow(2).height = 20;
-  const ws3bHeaders = ['순위','상품명','수량','매출(VAT 별도)','비중','성장률','전년동기 수량','전년동기 매출','전년동기 비중'];
+  const ws3bHeaders = ['순위','상품명','수량','매출(VAT 별도)','비중','성장률',`${kpi.refPeriodLabel} 수량`,`${kpi.refPeriodLabel} 매출`,`${kpi.refPeriodLabel} 비중`];
   ws3bHeaders.forEach((h,i)=>{ const c = ws3b.getCell(4, 2+i); c.value=h; styleCell(ws3b, c, {fill:GRAYHEAD, font:{bold:true,size:10}}); });
   kpi.productAll.forEach((x,i)=>{
     const rr = 5+i;
