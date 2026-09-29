@@ -721,17 +721,28 @@ async function loadTargetWorkbookForMatching(file){
   select.innerHTML = '<option value="">불러오는 중...</option>';
   try{
     targetWBCache = await readWorkbookAllSheets(file);
-    // find the best sheet to source a store list: prefer one containing many YYYYMMDD-style date headers (daily target sheet)
-    let bestSheet = null, bestCol = -1, bestList = [];
+    // 매장 목록은 시트 하나만 보고 고르지 않고, 매장명 열을 찾은 "모든" 시트에서 나온 매장을
+    // 매장번호 기준으로 합칩니다. ("26년 실적"처럼 실적이 입력된 매장만 나열되는 시트만 보면
+    // 아직 실적이 없는 신규 오픈 매장이 목록에서 통째로 빠질 수 있어 — 실제로 "운영목표" 시트에는
+    // 있지만 "26년 실적" 시트에는 없는 신규 매장이 있었던 사례가 있습니다.)
+    const byNum = new Map(); // 매장번호(문자열) -> label
     targetWBCache.sheetNames.forEach(name=>{
       const aoa = targetWBCache.sheets[name];
       const col = guessStoreNameCol(aoa);
       if(col>=0){
-        const list = collectStoreList(aoa, col);
-        if(list.length > bestList.length){ bestSheet = name; bestCol = col; bestList = list; }
+        collectStoreList(aoa, col).forEach(label=>{
+          const m = label.match(/^(\d{2,4})\./);
+          const key = m ? m[1] : label;
+          if(!byNum.has(key)) byNum.set(key, label);
+        });
       }
     });
-    storeListCache = bestList.map(label=>({label, sheet:bestSheet, col:bestCol}));
+    const bestList = Array.from(byNum.values()).sort((a,b)=>{
+      const na = parseInt(a,10), nb = parseInt(b,10);
+      if(isFinite(na) && isFinite(nb) && na!==nb) return na-nb;
+      return a.localeCompare(b);
+    });
+    storeListCache = bestList.map(label=>({label}));
     if(!storeListCache.length){
       select.innerHTML = '<option value="">매장 목록을 찾지 못했습니다 — 단일 매장 파일로 처리합니다</option>';
       tag.textContent = '단일 매장';
@@ -2822,6 +2833,9 @@ loadLikeCount();
 const CHANGELOG = [
   { date: '2026-09-28', items: [
     'Excel 다운로드 파일 : 주요상품·신메뉴 실적 시트 추가',
+  ]},
+  { date: '2026-09-10', items: [
+    '신메뉴 실적 리스트 : 유자 그릭요거트 시즌 출시 반영',
   ]},
   { date: '2026-09-07', items: [
     '사이즈별(STANDARD / GRAND / VENTI) 판매 금액·비중 그래프 추가',
