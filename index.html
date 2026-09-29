@@ -1145,13 +1145,31 @@ function findAnnualBlockAnySheet(sheetNames, sheets, storeNorm){
       if(targetRow>=0 && actualRow>=0){
         if(storeNorm){
           let storeLabelFound = null;
-          for(let rr=Math.max(0,r-10); rr<r; rr++){
+          // 1) "매장명" 드롭다운 선택 패턴(예: 매장별 운영목표 시트 상단 "매장명 | 197. 경주 교동 DT점")을
+          //    시트 맨 위부터 찾는다. 이 값이 시트 전체(그 아래 일별/월별 표 전부)의 기준 매장이므로,
+          //    표(구분 행)에서 10행 이내로 가깝다고 볼 수 없어 검색 범위를 시트 전체로 넓힌다.
+          for(let rr=0; rr<r && !storeLabelFound; rr++){
             const rrow = aoa[rr]||[];
-            for(const cellVal of rrow){
-              const s = str(cellVal);
-              if(/^\d{2,4}\.\s*\S/.test(s) || s==='합계'){ storeLabelFound = s; break; }
+            for(let ci=0; ci<rrow.length; ci++){
+              if(str(rrow[ci])==='매장명'){
+                for(let cj=ci+1; cj<rrow.length; cj++){
+                  const s = str(rrow[cj]);
+                  if(s){ storeLabelFound = s; break; }
+                }
+                break;
+              }
             }
-            if(storeLabelFound) break;
+          }
+          // 2) 못 찾았으면 기존 방식대로 표 바로 위 10행 이내에서 매장코드/합계 패턴을 찾는다.
+          if(!storeLabelFound){
+            for(let rr=Math.max(0,r-10); rr<r; rr++){
+              const rrow = aoa[rr]||[];
+              for(const cellVal of rrow){
+                const s = str(cellVal);
+                if(/^\d{2,4}\.\s*\S/.test(s) || s==='합계'){ storeLabelFound = s; break; }
+              }
+              if(storeLabelFound) break;
+            }
           }
           if(storeLabelFound){
             const norm = normStoreName(storeLabelFound);
