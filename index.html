@@ -180,6 +180,26 @@
     padding:2px 4px; line-height:1;
   }
   .idea-delete-btn:hover{ color:var(--negative); }
+  .idea-attach-btn{
+    flex-shrink:0; display:inline-flex; align-items:center; gap:4px; height:44px; padding:0 14px;
+    border:1.5px solid var(--border); border-radius:8px; background:#fff; color:var(--text-dim);
+    font-size:.82rem; cursor:pointer; font-family:'Noto Sans KR',sans-serif; white-space:nowrap;
+  }
+  .idea-attach-btn:hover{ border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+  .idea-image-preview{
+    display:flex; align-items:center; gap:10px; margin-bottom:10px; padding:6px 10px;
+    border:1px solid var(--border); border-radius:8px; background:var(--surface-2); width:fit-content;
+  }
+  .idea-image-preview img{ max-width:56px; max-height:56px; border-radius:6px; display:block; object-fit:cover; }
+  .idea-image-preview .remove-img{
+    background:none; border:none; color:var(--text-mute); cursor:pointer; font-size:.78rem;
+    padding:4px 6px; font-family:'Noto Sans KR',sans-serif;
+  }
+  .idea-image-preview .remove-img:hover{ color:var(--negative); }
+  .idea-item .idea-img{
+    max-width:240px; max-height:240px; border-radius:8px; margin-top:8px; display:block;
+    cursor:zoom-in; border:1px solid var(--border);
+  }
   .saved-box{ border:1.5px solid var(--info); border-radius:12px; padding:16px 18px; margin-bottom:20px; background:#fff; }
   .saved-title{ font-size:.86rem; font-weight:800; color:var(--info); margin-bottom:12px; }
   .saved-list{ display:flex; flex-direction:column; gap:8px; max-height:193px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
@@ -416,8 +436,14 @@
 
     <div class="idea-box">
       <div class="idea-title">💡 제안 · 아이디어 게시판</div>
+      <div class="idea-sub" style="margin:-4px 0 10px">사진은 복사해서 붙여넣기(Ctrl+V)하거나 📎 버튼으로 첨부할 수 있습니다.</div>
+      <div id="ideaImagePreview" class="idea-image-preview" style="display:none">
+        <img id="ideaImagePreviewImg" src="" alt="첨부 미리보기">
+        <button type="button" class="remove-img" onclick="removeIdeaImage()">✕ 사진 제거</button>
+      </div>
       <div class="idea-input-row">
         <textarea id="ideaInput" maxlength="300" placeholder="대시보드에 바라는 점, 아이디어를 자유롭게 남겨주세요 (익명)"></textarea>
+        <label class="idea-attach-btn" title="사진 첨부">📎 사진<input type="file" accept="image/*" id="ideaImageInput" style="display:none" onchange="handleIdeaImageFile(this.files[0])"></label>
         <button class="btn ghost small" id="ideaSubmitBtn" style="background:var(--surface-2)" onclick="submitIdea()">등록</button>
       </div>
       <div id="ideaList" class="idea-list"><div class="empty-hint">불러오는 중...</div></div>
@@ -3146,8 +3172,116 @@ function toggleChangelog(){
    ============================================================ */
 const IDEA_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxItX9M9pPKznHdhuB8tz3qur0vmipEKVQBGP7-ec2fij8OjNylwpTBn_-q-jzCWcVH/exec';
 
+// ---- 게시판 사진 첨부(붙여넣기 / 파일 선택) ----
+// Google Sheet 셀 용량 한계(셀당 약 5만자)에 걸리지 않도록, 첨부한 사진은 브라우저에서
+// 가로·세로 480px 이하로 줄이고 JPEG로 압축해 base64 data URL로 만든 뒤 전송합니다.
+let ideaImageDataUrl = null;
+const IDEA_IMAGE_MAX_CHARS = 42000; // data URL 길이 기준 안전 여유치 (시트 셀 한도 약 5만자)
+
+function setIdeaImagePreview(dataUrl){
+  ideaImageDataUrl = dataUrl;
+  const box = document.getElementById('ideaImagePreview');
+  const img = document.getElementById('ideaImagePreviewImg');
+  if(!box || !img) return;
+  if(dataUrl){ img.src = dataUrl; box.style.display = 'flex'; }
+  else { img.src = ''; box.style.display = 'none'; }
+}
+function removeIdeaImage(){
+  setIdeaImagePreview(null);
+  const fileInput = document.getElementById('ideaImageInput');
+  if(fileInput) fileInput.value = '';
+}
+function compressIdeaImageFile(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('파일을 읽지 못했습니다.'));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>reject(new Error('이미지를 불러오지 못했습니다.'));
+      img.onload = ()=>{
+        let width = img.naturalWidth, height = img.naturalHeight;
+        const maxDim = 480;
+        if(width > maxDim || height > maxDim){
+          if(width >= height){ height = Math.round(height*maxDim/width); width = maxDim; }
+          else { width = Math.round(width*maxDim/height); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = width; canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        // 용량이 기준보다 크면 화질/크기를 단계적으로 낮춰가며 다시 시도합니다.
+        let quality = 0.72;
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+        let tries = 0;
+        while(dataUrl.length > IDEA_IMAGE_MAX_CHARS && tries < 8){
+          quality -= 0.1;
+          if(quality < 0.3){
+            width = Math.round(width*0.8); height = Math.round(height*0.8);
+            canvas.width = width; canvas.height = height;
+            ctx.drawImage(img, 0, 0, width, height);
+            quality = 0.6;
+          }
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+          tries++;
+        }
+        if(dataUrl.length > IDEA_IMAGE_MAX_CHARS){ reject(new Error('사진 용량이 너무 커서 첨부할 수 없습니다. 더 작은 사진으로 시도해주세요.')); return; }
+        resolve(dataUrl);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+async function handleIdeaImageFile(file){
+  if(!file) return;
+  if(!file.type || !file.type.startsWith('image/')){ alert('이미지 파일만 첨부할 수 있습니다.'); return; }
+  try{
+    const dataUrl = await compressIdeaImageFile(file);
+    setIdeaImagePreview(dataUrl);
+  }catch(e){
+    alert(e.message || '사진을 처리하지 못했습니다.');
+  }
+}
+// 댓글 입력창에서 Ctrl+V로 사진을 바로 붙여넣을 수 있도록 지원합니다.
+(function setupIdeaImagePaste(){
+  const input = document.getElementById('ideaInput');
+  if(!input) return;
+  input.addEventListener('paste', (e)=>{
+    const items = e.clipboardData && e.clipboardData.items;
+    if(!items) return;
+    for(const item of items){
+      if(item.type && item.type.startsWith('image/')){
+        const file = item.getAsFile();
+        if(file){ e.preventDefault(); handleIdeaImageFile(file); }
+        break;
+      }
+    }
+  });
+})();
+
 function escapeIdea(s){
   return String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// 시트에 저장된 image 값이 실제로 안전한 base64 이미지 data URL인지만 확인합니다
+// (시트를 직접 수정해서 이상한 값이 들어오는 경우를 방지하기 위한 최소한의 안전장치).
+function isIdeaImageSrc(s){
+  return typeof s === 'string' && /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(s);
+}
+function openIdeaImage(src){
+  let overlay = document.getElementById('ideaImgLightbox');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'ideaImgLightbox';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(10,10,12,.86);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:zoom-out;padding:24px';
+    overlay.onclick = ()=>{ overlay.style.display='none'; };
+    const img = document.createElement('img');
+    img.id = 'ideaImgLightboxImg';
+    img.style.cssText = 'max-width:100%;max-height:100%;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.45)';
+    overlay.appendChild(img);
+    document.body.appendChild(overlay);
+  }
+  document.getElementById('ideaImgLightboxImg').src = src;
+  overlay.style.display = 'flex';
 }
 function renderIdeaList(notes){
   const listEl = document.getElementById('ideaList');
@@ -3162,6 +3296,7 @@ function renderIdeaList(notes){
         <div class="idea-text">${escapeIdea(n.text)}</div>
         <button class="idea-delete-btn" onclick="deleteIdea(${i})" title="삭제 (운영자 전용)">✕</button>
       </div>
+      ${isIdeaImageSrc(n.image) ? `<img class="idea-img" src="${n.image}" alt="첨부 사진" onclick="openIdeaImage('${n.image}')">` : ''}
       <div class="idea-date">${escapeIdea(n.date)}</div>
     </div>
   `).join('');
@@ -3199,7 +3334,7 @@ async function submitIdea(){
   const input = document.getElementById('ideaInput');
   const btn = document.getElementById('ideaSubmitBtn');
   const text = input.value.trim();
-  if(!text) return;
+  if(!text && !ideaImageDataUrl) return;
   if(!IDEA_APPS_SCRIPT_URL){
     alert('게시판 저장소 설정이 아직 완료되지 않았습니다. 운영지원팀에 문의해주세요.');
     return;
@@ -3212,10 +3347,11 @@ async function submitIdea(){
     // 서버(Apps Script) 쪽에서 그 내용을 그대로 JSON으로 해석하도록 합니다.
     const res = await fetch(IDEA_APPS_SCRIPT_URL, {
       method:'POST', headers:{'Content-Type':'text/plain'},
-      body: JSON.stringify({ action:'add', text, date:dateStr }),
+      body: JSON.stringify({ action:'add', text, date:dateStr, image: ideaImageDataUrl || '' }),
     });
     if(!res.ok) throw new Error('등록 실패 HTTP '+res.status);
     input.value = '';
+    removeIdeaImage();
     await loadIdeaBoard();
   }catch(e){
     console.error('[아이디어 게시판]', e);
