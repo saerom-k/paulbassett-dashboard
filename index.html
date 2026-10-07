@@ -171,6 +171,10 @@
     border:1.5px solid var(--border); border-radius:8px; font-family:'Noto Sans KR',sans-serif; font-size:.86rem; color:var(--text);
   }
   .idea-input-row textarea:focus{ outline:none; border-color:var(--accent); }
+  /* 📎 사진 / 등록 버튼을 한 묶음으로 두어, 좁은 화면에서도 이 둘은 항상 같은 줄에
+     나란히(같은 크기로) 오도록 합니다. 묶음 전체가 필요하면 textarea 아래 줄로 내려갑니다. */
+  .idea-btn-row{ display:flex; gap:8px; flex:0 0 auto; }
+  .idea-btn-row > *{ width:74px; height:44px; padding:0; display:inline-flex; align-items:center; justify-content:center; box-sizing:border-box; }
   .idea-list{ display:flex; flex-direction:column; gap:8px; max-height:96px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
   .idea-item{ padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); }
   .idea-item .idea-text{ font-size:.86rem; color:var(--text); white-space:pre-wrap; word-break:break-word; }
@@ -181,11 +185,13 @@
   }
   .idea-delete-btn:hover{ color:var(--negative); }
   .idea-attach-btn{
-    flex-shrink:0; display:inline-flex; align-items:center; gap:4px; height:44px; padding:0 14px;
-    border:1.5px solid var(--border); border-radius:8px; background:#fff; color:var(--text-dim);
-    font-size:.82rem; cursor:pointer; font-family:'Noto Sans KR',sans-serif; white-space:nowrap;
+    gap:4px; border:1.5px solid var(--border); border-radius:9px; background:#fff;
+    color:var(--text-dim); font-size:.82rem; cursor:pointer; font-family:'Noto Sans KR',sans-serif; white-space:nowrap;
+    box-sizing:border-box;
   }
   .idea-attach-btn:hover{ border-color:var(--accent); color:var(--accent); background:var(--accent-soft); }
+  /* 등록 버튼도 📎 사진 버튼과 정확히 같은 높이·여백으로 맞춥니다. */
+  .idea-btn-row #ideaSubmitBtn{ padding:0; font-size:.82rem; border-radius:9px; box-sizing:border-box; }
   .idea-image-preview{
     display:flex; align-items:center; gap:10px; margin-bottom:10px; padding:6px 10px;
     border:1px solid var(--border); border-radius:8px; background:var(--surface-2); width:fit-content;
@@ -200,6 +206,25 @@
     max-width:240px; max-height:240px; border-radius:8px; margin-top:8px; display:block;
     cursor:zoom-in; border:1px solid var(--border);
   }
+  /* ---- 대댓글(답글) ---- */
+  .idea-meta-row{ display:flex; align-items:center; gap:10px; margin-top:4px; }
+  .idea-reply-btn{
+    background:none; border:none; color:var(--accent); font-size:.74rem; font-weight:700;
+    cursor:pointer; padding:2px 4px; font-family:'Noto Sans KR',sans-serif;
+  }
+  .idea-reply-btn:hover{ text-decoration:underline; }
+  .idea-reply-box{ display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-top:8px; }
+  .idea-reply-box textarea{
+    flex:1; min-width:160px; min-height:38px; max-height:90px; resize:vertical; padding:8px 10px;
+    border:1.5px solid var(--border); border-radius:7px; font-family:'Noto Sans KR',sans-serif;
+    font-size:.82rem; color:var(--text);
+  }
+  .idea-reply-box textarea:focus{ outline:none; border-color:var(--accent); }
+  .idea-replies{
+    margin-top:10px; padding-left:14px; border-left:2px solid var(--border);
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .idea-item.idea-reply{ background:#fff; }
   .saved-box{ border:1.5px solid var(--info); border-radius:12px; padding:16px 18px; margin-bottom:20px; background:#fff; }
   .saved-title{ font-size:.86rem; font-weight:800; color:var(--info); margin-bottom:12px; }
   .saved-list{ display:flex; flex-direction:column; gap:8px; max-height:193px; overflow-y:auto; -webkit-overflow-scrolling:touch; }
@@ -443,8 +468,10 @@
       </div>
       <div class="idea-input-row">
         <textarea id="ideaInput" maxlength="300" placeholder="대시보드에 바라는 점, 아이디어를 자유롭게 남겨주세요 (익명)"></textarea>
-        <label class="idea-attach-btn" title="사진 첨부">📎 사진<input type="file" accept="image/*" id="ideaImageInput" style="display:none" onchange="handleIdeaImageFile(this.files[0])"></label>
-        <button class="btn ghost small" id="ideaSubmitBtn" style="background:var(--surface-2)" onclick="submitIdea()">등록</button>
+        <div class="idea-btn-row">
+          <label class="idea-attach-btn" title="사진 첨부">📎 사진<input type="file" accept="image/*" id="ideaImageInput" style="display:none" onchange="handleIdeaImageFile(this.files[0])"></label>
+          <button class="btn ghost small" id="ideaSubmitBtn" style="background:var(--surface-2)" onclick="submitIdea()">등록</button>
+        </div>
       </div>
       <div id="ideaList" class="idea-list"><div class="empty-hint">불러오는 중...</div></div>
     </div>
@@ -3283,6 +3310,28 @@ function openIdeaImage(src){
   document.getElementById('ideaImgLightboxImg').src = src;
   overlay.style.display = 'flex';
 }
+function renderIdeaNote(n, i, isReply, repliesByParent){
+  const replies = n.id ? (repliesByParent.get(String(n.id)) || []) : [];
+  return `
+    <div class="idea-item${isReply ? ' idea-reply' : ''}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div class="idea-text">${escapeIdea(n.text)}</div>
+        <button class="idea-delete-btn" onclick="deleteIdea(${i})" title="삭제 (운영자 전용)">✕</button>
+      </div>
+      ${isIdeaImageSrc(n.image) ? `<img class="idea-img" src="${n.image}" alt="첨부 사진" onclick="openIdeaImage('${n.image}')">` : ''}
+      <div class="idea-meta-row">
+        <div class="idea-date">${escapeIdea(n.date)}</div>
+        ${n.id ? `<button class="idea-reply-btn" onclick="toggleIdeaReplyBox('${n.id}')">답글</button>` : ''}
+      </div>
+      ${n.id ? `
+      <div class="idea-reply-box" id="replyBox-${n.id}" style="display:none">
+        <textarea id="replyInput-${n.id}" maxlength="300" placeholder="답글을 입력해주세요"></textarea>
+        <button class="btn ghost small" style="background:var(--surface-2)" onclick="submitIdeaReply('${n.id}')">답글 등록</button>
+      </div>` : ''}
+      ${replies.length ? `<div class="idea-replies">${replies.map(({n:rn,i:ri})=>renderIdeaNote(rn, ri, true, repliesByParent)).join('')}</div>` : ''}
+    </div>
+  `;
+}
 function renderIdeaList(notes){
   const listEl = document.getElementById('ideaList');
   if(!notes || !notes.length){
@@ -3290,21 +3339,28 @@ function renderIdeaList(notes){
     listEl.style.maxHeight = '';
     return;
   }
-  listEl.innerHTML = notes.map((n,i)=>({n,i})).reverse().map(({n,i})=>`
-    <div class="idea-item">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-        <div class="idea-text">${escapeIdea(n.text)}</div>
-        <button class="idea-delete-btn" onclick="deleteIdea(${i})" title="삭제 (운영자 전용)">✕</button>
-      </div>
-      ${isIdeaImageSrc(n.image) ? `<img class="idea-img" src="${n.image}" alt="첨부 사진" onclick="openIdeaImage('${n.image}')">` : ''}
-      <div class="idea-date">${escapeIdea(n.date)}</div>
-    </div>
-  `).join('');
+  // parentId가 있고 그 부모가 실제로 목록에 있을 때만 답글로 취급합니다. 부모가 삭제되어
+  // 없어진 경우(고아 답글)는 최상위 댓글처럼 그대로 보여줍니다.
+  const byId = new Map();
+  notes.forEach((n,i)=>{ if(n.id) byId.set(String(n.id), true); });
+  const topLevel = [];
+  const repliesByParent = new Map();
+  notes.forEach((n,i)=>{
+    const pid = n.parentId && byId.has(String(n.parentId)) ? String(n.parentId) : '';
+    if(pid){
+      if(!repliesByParent.has(pid)) repliesByParent.set(pid, []);
+      repliesByParent.get(pid).push({n,i});
+    } else {
+      topLevel.push({n,i});
+    }
+  });
+  listEl.innerHTML = topLevel.slice().reverse().map(({n,i})=>renderIdeaNote(n, i, false, repliesByParent)).join('');
   // 댓글 글자 수에 따라 박스 높이가 제각각이라, 고정 px 값 대신 실제 렌더링된
-  // 첫 2개 댓글의 높이를 측정해 max-height를 정합니다. 이렇게 하면 댓글 내용이
-  // 길어 여러 줄이 되어도 2번째 댓글까지는 항상 잘리지 않고 온전히 보입니다.
+  // 첫 2개 "최상위" 댓글의 높이를 측정해 max-height를 정합니다(답글은 그 댓글 안에 포함되어
+  // 함께 측정되므로, listEl의 직계 자식만 셉니다). 이렇게 하면 댓글 내용이 길어 여러 줄이
+  // 되거나 답글이 달려도, 2번째 댓글까지는 항상 잘리지 않고 온전히 보입니다.
   requestAnimationFrame(()=>{
-    const items = listEl.querySelectorAll('.idea-item');
+    const items = Array.from(listEl.children).filter(el=>el.classList.contains('idea-item'));
     if(items.length <= 2){
       listEl.style.maxHeight = 'none';
     }else{
@@ -3313,6 +3369,38 @@ function renderIdeaList(notes){
       listEl.style.maxHeight = Math.ceil(h) + 'px';
     }
   });
+}
+function toggleIdeaReplyBox(id){
+  const box = document.getElementById('replyBox-'+id);
+  if(!box) return;
+  const willShow = box.style.display === 'none';
+  box.style.display = willShow ? 'flex' : 'none';
+  if(willShow){
+    const ta = document.getElementById('replyInput-'+id);
+    if(ta) ta.focus();
+  }
+}
+async function submitIdeaReply(parentId){
+  const input = document.getElementById('replyInput-'+parentId);
+  if(!input) return;
+  const text = input.value.trim();
+  if(!text) return;
+  if(!IDEA_APPS_SCRIPT_URL){
+    alert('게시판 저장소 설정이 아직 완료되지 않았습니다. 운영지원팀에 문의해주세요.');
+    return;
+  }
+  const dateStr = new Date().toLocaleString('ko-KR');
+  try{
+    const res = await fetch(IDEA_APPS_SCRIPT_URL, {
+      method:'POST', headers:{'Content-Type':'text/plain'},
+      body: JSON.stringify({ action:'add', text, date:dateStr, image:'', parentId }),
+    });
+    if(!res.ok) throw new Error('등록 실패 HTTP '+res.status);
+    await loadIdeaBoard();
+  }catch(e){
+    console.error('[아이디어 게시판] 답글 등록 실패', e);
+    alert('답글 등록 중 문제가 발생했어요.\n\n오류 내용: ' + e.message);
+  }
 }
 async function loadIdeaBoard(){
   const listEl = document.getElementById('ideaList');
@@ -3347,7 +3435,7 @@ async function submitIdea(){
     // 서버(Apps Script) 쪽에서 그 내용을 그대로 JSON으로 해석하도록 합니다.
     const res = await fetch(IDEA_APPS_SCRIPT_URL, {
       method:'POST', headers:{'Content-Type':'text/plain'},
-      body: JSON.stringify({ action:'add', text, date:dateStr, image: ideaImageDataUrl || '' }),
+      body: JSON.stringify({ action:'add', text, date:dateStr, image: ideaImageDataUrl || '', parentId: '' }),
     });
     if(!res.ok) throw new Error('등록 실패 HTTP '+res.status);
     input.value = '';
