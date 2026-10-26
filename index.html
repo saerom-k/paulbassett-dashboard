@@ -346,6 +346,19 @@
   .bar-track{ background: var(--surface-3); border-radius:3px; height:6px; width:100%; overflow:hidden; margin-top:4px; }
   .bar-fill{ height:100%; background: var(--accent); border-radius:3px; }
 
+  .reply-notice{ position:fixed; inset:0; background:rgba(20,20,25,.45); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .rn-box{ background:#fff; border-radius:14px; padding:20px 22px; max-width:440px; width:100%; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  .rn-title{ font-weight:800; font-size:1.05rem; margin-bottom:12px; }
+  .rn-item{ border-left:3px solid var(--accent); padding:4px 0 4px 10px; margin-bottom:10px; }
+  .rn-orig{ font-size:.76rem; color:var(--text-mute); }
+  .rn-reply{ font-size:.9rem; color:var(--text); margin-top:2px; white-space:pre-wrap; word-break:break-word; }
+  .rn-more{ font-size:.8rem; color:var(--text-dim); margin-bottom:8px; }
+  .rn-actions{ text-align:right; margin-top:6px; }
+  .period-mode{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:14px 0 4px; }
+  .period-mode-label{ font-size:.82rem; font-weight:800; color:var(--text-dim); margin-right:2px; }
+  .pm-btn{ border:1.5px solid var(--border); background:#fff; color:var(--text-dim); font-family:'Noto Sans KR',sans-serif; font-weight:700; font-size:.85rem; padding:7px 16px; border-radius:20px; cursor:pointer; }
+  .pm-btn.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .period-mode-note{ font-size:.76rem; color:var(--text-mute); flex-basis:100%; }
   .two-col{ display:grid; grid-template-columns: 1.1fr .9fr; gap:16px; }
   /* !important는 개별 섹션에서 style="grid-template-columns:..." 로 직접
      지정한 인라인 스타일(예: 조수·조단가/채널별 매출 섹션의 1fr 1.4fr)보다
@@ -482,14 +495,14 @@
       <label class="drop required" id="drop-cur">
         <div class="idx">1-1</div>
         <div class="name">일자별종합매출현황 (당월)</div>
-        <div class="desc">분석 기간의 데이터를 다운받아 넣어주세요.<br>일별 매출·조수·조단가·배달매출 데이터입니다.</div>
+        <div class="desc">분석 기간의 데이터를 다운받아 넣어주세요. (월·분기·연간 등 기간 자유)<br>일별 매출·조수·조단가·배달매출 데이터입니다.</div>
         <div class="status" data-slot="cur"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="cur">
       </label>
       <label class="drop optional monthly" id="drop-prev">
         <div class="idx">1-2</div>
         <div class="name">일자별종합매출현황 (비교 기간)</div>
-        <div class="desc">비교 기간의 1일~말일까지의 데이터를 넣어주세요.<br>매출 비교에 사용되는 데이터입니다.</div>
+        <div class="desc">비교 기간의 데이터를 넣어주세요. (분석 기간과 같은 날짜끼리 비교)<br>매출 비교에 사용되는 데이터입니다.</div>
         <div class="status" data-slot="prev"></div>
         <input type="file" accept=".xlsx,.xls,.csv" data-slot="prev">
       </label>
@@ -1401,6 +1414,16 @@ async function computeAll(){
   const posRows = aoaPos ? aoaPos.slice(1).filter(r=>r && normalizeDateStr(r[COL.pos.date])) : [];
   const posPrevRows = aoaPosPrev ? aoaPosPrev.slice(1).filter(r=>r && normalizeDateStr(r[COL.pos.date])) : [];
 
+  // ---- 기간 분석 분기: 당월 파일에 2개월 이상의 날짜가 들어 있으면 기간(분기·반기·연간 등) 분석으로 처리 ----
+  {
+    const ymSet = new Set();
+    curRows.forEach(r=>{ const d = normalizeDateStr(r[COL.dae.date]); if(d) ymSet.add(d.slice(0,7)); });
+    if(ymSet.size > 1){
+      return await computePeriod({ curRows, prevRows, prodRows, PCOL, prodPrevRows, PCOL_LY, posRows, posPrevRows,
+        midMap, storeNorm, storeLabel, targetWB, aoaProd, aoaPos, aoaWaste, wasteRows, priceMap });
+    }
+  }
+
   // ---- 2. global params ----
   const firstDateStr = normalizeDateStr(curRows[0][COL.dae.date]);
   const [YEAR, MONTH] = firstDateStr.split('-').map(Number);
@@ -2129,6 +2152,7 @@ async function computeAll(){
 let CURRENT_KPI = null;
 // kpi를 직접 받지 않는 일부 하위 렌더 함수(dowCard, catTable, growthTable 등)에서 쓰는
 // 비교 기준 라벨. render() 호출 시마다 kpi.refLabel 등을 반영해 갱신됩니다.
+let CUR_LABEL = '당월';
 let REF_LABEL = '전년', REF_PERIOD_LABEL = '전년동기', REF_LABEL_FULL = '전년동월', REF_MONTH_LABEL = '전년동월';
 
 function donutSVG(pct, colorHex, size, label){
@@ -2409,6 +2433,13 @@ function render(res){
 
   const kpi = res;
   CURRENT_KPI = kpi;
+  CUR_LABEL = kpi.isPeriod ? '분석 기간' : '당월';
+  if(kpi.isPeriod){
+    REF_LABEL = kpi.refLabel; REF_PERIOD_LABEL = kpi.refPeriodLabel; REF_LABEL_FULL = kpi.refLabelFull; REF_MONTH_LABEL = kpi.refLabelFull;
+    PERIOD_RAW = kpi; PERIOD_AVG = false;
+    renderPeriod(kpi);
+    return;
+  }
   REF_LABEL = kpi.refLabel || '전년'; REF_PERIOD_LABEL = kpi.refPeriodLabel || '전년동기'; REF_LABEL_FULL = kpi.refLabelFull || '전년동월'; REF_MONTH_LABEL = kpi.refMonthLabel || '전년동월';
   const cumGrowth = kpi.cumLastYear>0 ? (kpi.cumNetForCompare/kpi.cumLastYear - 1) : null;
   const cumAchieve = kpi.cumTarget>0 ? kpi.cumNet/kpi.cumTarget : 0;
@@ -2624,7 +2655,7 @@ function catTable(list, total, isSub, clickable){
   }).join('');
   const groupHead = hasLY ? `<tr>
       <th rowspan="2" style="vertical-align:bottom">${isSub?'소분류':'대분류'}</th>
-      <th colspan="4" class="group-head cur">당월</th>
+      <th colspan="4" class="group-head cur">${CUR_LABEL}</th>
       <th colspan="3" class="group-head ly">${REF_PERIOD_LABEL}</th>
       <th rowspan="2"></th>
     </tr>
@@ -2759,7 +2790,7 @@ function productTable(list, totalQty, totalNet){
   const groupHead = hasLY ? `<tr>
       <th rowspan="2" style="vertical-align:bottom">순위</th>
       <th rowspan="2" style="vertical-align:bottom;text-align:left">상품명</th>
-      <th colspan="4" class="group-head cur">당월</th>
+      <th colspan="4" class="group-head cur">${CUR_LABEL}</th>
       <th colspan="3" class="group-head ly">${REF_PERIOD_LABEL}</th>
       <th rowspan="2"></th>
     </tr>
@@ -2794,11 +2825,11 @@ function wasteWeekdayTrendSVG(trend){
 }
 function wasteBlock(kpi){
   if(!kpi.hasWaste) return `<div class="empty-hint">재고폐기등록raw 파일이 업로드되지 않았습니다.</div>`;
-  if(!kpi.wasteTop20.length) return `<div class="empty-hint">이번 달 폐기 데이터가 없습니다.</div>`;
+  if(!kpi.wasteTop20.length) return `<div class="empty-hint">${kpi.isPeriod?'분석 기간':'이번 달'} 폐기 데이터가 없습니다.</div>`;
   const summary = `<div class="cards" style="margin-bottom:14px">
     <div class="card"><div class="label">폐기 수량</div><div class="value">${fmtNum(kpi.wasteTotalQty)}</div></div>
     <div class="card"><div class="label">폐기금액(VAT 별도)</div><div class="value">${fmtWon(kpi.wasteTotalAmt)}</div></div>
-    <div class="card"><div class="label">폐기율</div><div class="value">${fmtPct(kpi.wasteRate, 2)}</div><div class="sub">폐기금액(VAT 별도) / 당월 누계 매출</div></div>
+    <div class="card"><div class="label">폐기율</div><div class="value">${fmtPct(kpi.wasteRate, 2)}</div><div class="sub">폐기금액(VAT 별도) / ${kpi.isPeriod?'기간':'당월'} 누계 매출</div></div>
   </div>`;
   const rows = kpi.wasteTop20.map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.name}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.unitPrice)}</td><td>${fmtWon(x.amt)}</td><td>${fmtPct(x.rate,2)}</td><td style="text-align:left"><span class="pill">${x.reason||'-'}</span></td></tr>`).join('');
   const top20Table = `<div class="tablewrap"><table class="dt">
@@ -2843,6 +2874,824 @@ function annualTable(kpi){
     <tbody>${rows}</tbody>
     <tfoot><tr><td style="text-align:left">합계 · 월평균(${dataMonths.length}개월 반영)</td><td>${fmtWon(dataTargetSum)}</td><td>${fmtWon(dataLastYearSum)}</td><td>${fmtWon(dataActualSum)}</td><td class="${achieveSum===null?'':(achieveSum>=1?'pos':'neg')}">${achieveSum===null?'-':fmtPct(achieveSum)}</td><td class="${yoySum===null?'':(yoySum>=0?'pos':'neg')}">${yoySum===null?'-':fmtSignedPct(yoySum)}</td></tr></tfoot>
   </table></div>`;
+}
+
+/* ============================================================
+   4-B. 기간 분석 (분기 · 반기 · 연간 · 임의 기간)
+   업로드한 "일자별종합매출현황(당월)" 파일에 2개월 이상의 데이터가 들어 있으면
+   월 단위 대시보드 대신 아래 기간 분석 화면으로 자동 전환됩니다.
+   - 분석 기간: 파일의 첫 날짜 ~ 매출이 있는 마지막 날짜
+   - 비교 기간: 비교 파일 날짜를 보고 전년동기(12개월 전)/직전 기간/N개월 전을 자동 인식하고,
+     "같은 날짜끼리"만 맞춰서 비교합니다 (비교 파일이 더 길어도 해당 부분만 사용).
+   ============================================================ */
+function ymDiff(a, b){
+  const [ay,am] = a.split('-').map(Number), [by,bm] = b.split('-').map(Number);
+  return (ay-by)*12 + (am-bm);
+}
+function shiftDateStr(ds, deltaMonths){
+  const [y,m,d] = ds.split('-').map(Number);
+  const t = y*12 + (m-1) + deltaMonths;
+  const ny = Math.floor(t/12), nm = (t%12)+1;
+  return `${ny}-${pad2(nm)}-${pad2(Math.min(d, daysInMonth(ny,nm)))}`;
+}
+function periodTitleOf(startStr, endStr){
+  const [sy,sm,sd] = startStr.split('-').map(Number), [ey,em,ed] = endStr.split('-').map(Number);
+  const months = ymDiff(endStr, startStr) + 1;
+  const fullEnd = ed === daysInMonth(ey,em);
+  let base = null;
+  if(sd===1){
+    if(months===12 && sm===1) base = `${sy}년 연간`;
+    else if(months===6 && sm===1) base = `${sy}년 상반기`;
+    else if(months===6 && sm===7) base = `${sy}년 하반기`;
+    else if(months===3 && (sm-1)%3===0) base = `${sy}년 ${(sm-1)/3+1}분기`;
+    else if(months===1) base = `${sy}년 ${sm}월`;
+    else if(sy===ey) base = `${sy}년 ${sm}~${em}월`;
+  }
+  const range = `${sy}.${pad2(sm)}.${pad2(sd)} ~ ${ey}.${pad2(em)}.${pad2(ed)}`;
+  if(!base) return range;
+  return fullEnd ? base : `${base} (${em}월 ${ed}일까지)`;
+}
+function periodRefLabels(offset, months){
+  if(offset===12) return { label:'전년', period:'전년동기', full:'전년동기' };
+  if(offset===months){
+    if(months===1) return { label:'전월', period:'전월동기', full:'전월' };
+    if(months===3) return { label:'직전 분기', period:'직전 분기 동기', full:'직전 분기' };
+    return { label:'직전 기간', period:'직전 기간 동기', full:'직전 기간' };
+  }
+  if(offset<=0) return { label:'비교 기간', period:'비교 기간', full:'비교 기간' };
+  return { label:`${offset}개월 전`, period:`${offset}개월 전 동기`, full:`${offset}개월 전` };
+}
+
+// 목표매출 파일에서 해당 매장의 월별 사업계획(1~12월)을 읽습니다 (월 단위 대시보드와 동일한 탐색 순서).
+function readMonthlyPlanTargets(targetWB, storeNorm){
+  let t12 = new Array(12).fill(0);
+  if(!targetWB || !storeNorm) return t12;
+  for(const sname of targetWB.sheetNames){
+    const aoa = targetWB.sheets[sname];
+    const info = findMonthBlocks(aoa);
+    if(!info) continue;
+    const nameCol = guessStoreNameCol(aoa);
+    if(nameCol<0) continue;
+    const storeRow = findStoreRowInSheet(aoa, nameCol, storeNorm);
+    if(storeRow<0) continue;
+    const colMap = monthBlockToColMap(info.blocks[0]);
+    const vals = colMap.map(c => c===null ? 0 : num(aoa[storeRow][c]));
+    if(str(sname).includes('계획') && vals.some(v=>v>0)){ t12 = vals; break; }
+  }
+  if(t12.every(v=>v===0)){
+    const ab = findAnnualBlockAnySheet(targetWB.sheetNames, targetWB.sheets, storeNorm);
+    if(ab) t12 = ab.colMap.map(c => c===null ? 0 : num(ab.aoa[ab.targetRow][c]));
+  }
+  return t12;
+}
+
+function periodCategoryLists(curAgg, refAgg, hasRef, midMap){
+  const midAgg = curAgg.midAgg, subAgg = curAgg.subAgg, raw = curAgg.detailRaw;
+  const midAggLY = hasRef ? refAgg.midAgg : null, subAggLY = hasRef ? refAgg.subAgg : null;
+  const rawLY = hasRef ? refAgg.detailRaw : null;
+  const midTotal = Object.values(midAgg).reduce((s,v)=>s+v.net,0);
+  const subTotal = Object.values(subAgg).reduce((s,v)=>s+v.net,0);
+  const midTotalLY = hasRef ? Object.values(midAggLY).reduce((s,v)=>s+v.net,0) : 0;
+  const subTotalLY = hasRef ? Object.values(subAggLY).reduce((s,v)=>s+v.net,0) : 0;
+  const midList = MID_CATS.map(c=>{
+    const ly = hasRef ? midAggLY[c] : null;
+    return { name:c, ...midAgg[c], share: midTotal>0 ? midAgg[c].net/midTotal : 0,
+      lyQty: ly?ly.qty:null, lyNet: ly?ly.net:null, lyShare: (ly && midTotalLY>0) ? ly.net/midTotalLY : null };
+  }).sort((a,b)=>b.net-a.net);
+  const subList = Object.keys(subAgg).map(k=>{
+    const ly = hasRef ? subAggLY[k] : null;
+    return { name:k, ...subAgg[k], share: subTotal>0 ? subAgg[k].net/subTotal : 0,
+      lyQty: ly?ly.qty:null, lyNet: hasRef ? (ly?ly.net:0) : null, lyShare: (hasRef && subTotalLY>0) ? ((ly?ly.net:0)/subTotalLY) : null };
+  }).sort((a,b)=>b.net-a.net);
+  const midDetailList = {};
+  MID_CATS.forEach(c=>{
+    const catNet = midAgg[c].net, catQty = midAgg[c].qty;
+    const catNetLY = hasRef ? midAggLY[c].net : 0;
+    const dLY = hasRef ? rawLY[c] : {subs:{}, prods:{}};
+    const subs = Object.keys(raw[c].subs).map(k=>{
+      const ly = dLY.subs[k];
+      return { name:k, ...raw[c].subs[k], share: catNet>0 ? raw[c].subs[k].net/catNet : 0,
+        lyQty: ly?ly.qty:null, lyNet: ly?ly.net:null, lyShare: (ly && catNetLY>0) ? ly.net/catNetLY : null };
+    }).sort((a,b)=>b.net-a.net);
+    const prods = Object.keys(raw[c].prods).map(k=>{
+      const ly = dLY.prods[k];
+      return { name:k, ...raw[c].prods[k], lyQty: ly?ly.qty:null, lyNet: ly?ly.net:null };
+    }).sort((a,b)=>b.net-a.net).slice(0,20)
+      .map((p,i)=>({rank:i+1, ...p, share: catNet>0 ? p.net/catNet : 0, lyShare: (p.lyNet!=null && catNetLY>0) ? p.lyNet/catNetLY : null}));
+    midDetailList[c] = { subs, subTotal: catNet, prods, prodQtyTotal: catQty };
+  });
+  return { midList, midTotal, subList, subTotal, midDetailList };
+}
+
+function periodDowStats(items){
+  // items: [{dateStr, net}] → 요일별(월~일) 일평균 매출
+  const acc = Array.from({length:7}, ()=>({sum:0, n:0}));
+  items.forEach(it=>{
+    if(!(it.net>0)) return;
+    const dow = isoDow(it.dateStr); // 1(월)~7(일)
+    acc[dow-1].sum += it.net; acc[dow-1].n += 1;
+  });
+  return acc.map(a=>({ avg: a.n? a.sum/a.n : 0, n:a.n }));
+}
+
+
+// 월 화면의 상품 부가 분석(커피 믹스·밀도·주요상품·신메뉴·사이즈 비중·성장/부진 TOP5)을 기간 데이터로 계산합니다.
+function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_CUTOFF, hasProdLY, prodTotalNet, subList, productAll){
+  // ---- 룽고/아메리카노/디카페인 아메리카노 비중, 밀도 매출 비중 (소분류 하단 도넛 그래프용) ----
+  let coffeeMix = { lungo:0, americano:0, decaf:0 };
+  let milldoNet = 0, milldoQty = 0;
+  monthProdRows.forEach(r=>{
+    const nameStripped = stripWs(str(r[PCOL.name]));
+    const net = num(r[PCOL.net]);
+    const qty = num(r[PCOL.qty]);
+    const master = PCOL.code>=0 ? masterOf(r[PCOL.code]) : null;
+    const group = master ? master[0] : null;
+    if(group==='룽고') coffeeMix.lungo += net;
+    else if(group==='아메리카노') coffeeMix.americano += net;
+    else if(group==='디카페인 아메리카노') coffeeMix.decaf += net;
+    else if(!master){
+      // 마스터에 코드가 없는 극히 일부 상품에 대한 예비 수단
+      if(LUNGO_SET.has(nameStripped)) coffeeMix.lungo += net;
+      else if(AMERICANO_SET.has(nameStripped)) coffeeMix.americano += net;
+      else if(DECAF_AMERICANO_SET.has(nameStripped)) coffeeMix.decaf += net;
+    }
+    if(nameStripped.includes('밀도')){
+      const code = PCOL.code>=0 ? normCode(r[PCOL.code]) : '';
+      if(!MILLDO_EXCLUDE_CODES.has(code)){ milldoNet += net; milldoQty += qty; }
+    }
+  });
+
+
+  // ---- 밀도 상품별 실적 (도넛 클릭 시 표시) ----
+  const milldoProdCur = {};
+  monthProdRows.forEach(r=>{
+    const nameStripped = stripWs(str(r[PCOL.name]));
+    if(!nameStripped.includes('밀도')) return;
+    const code = PCOL.code>=0 ? normCode(r[PCOL.code]) : '';
+    if(MILLDO_EXCLUDE_CODES.has(code)) return;
+    const name = str(r[PCOL.name]);
+    if(!milldoProdCur[name]) milldoProdCur[name] = {qty:0, net:0};
+    milldoProdCur[name].qty += num(r[PCOL.qty]);
+    milldoProdCur[name].net += num(r[PCOL.net]);
+  });
+  const milldoProdLY = {};
+  monthProdRowsLY.forEach(r=>{
+    const nameStripped = stripWs(str(r[PCOL_LY.name]));
+    if(!nameStripped.includes('밀도')) return;
+    const code = PCOL_LY.code>=0 ? normCode(r[PCOL_LY.code]) : '';
+    if(MILLDO_EXCLUDE_CODES.has(code)) return;
+    const name = str(r[PCOL_LY.name]);
+    if(!milldoProdLY[name]) milldoProdLY[name] = {qty:0, net:0};
+    milldoProdLY[name].qty += num(r[PCOL_LY.qty]);
+    milldoProdLY[name].net += num(r[PCOL_LY.net]);
+  });
+  const milldoNetLY = Object.values(milldoProdLY).reduce((s,v)=>s+v.net,0);
+  const milldoProductList = Object.keys(milldoProdCur).map(k=>{
+    const ly = milldoProdLY[k];
+    return {
+      name:k, ...milldoProdCur[k], share: milldoNet>0? milldoProdCur[k].net/milldoNet:0,
+      lyQty: hasProdLY ? (ly? ly.qty : 0) : null,
+      lyNet: hasProdLY ? (ly? ly.net : 0) : null,
+      lyShare: (hasProdLY && milldoNetLY>0) ? ((ly?ly.net:0)/milldoNetLY) : (hasProdLY ? 0 : null),
+    };
+  }).sort((a,b)=>b.net-a.net).map((p,i)=>({rank:i+1, ...p}));
+  const milldoProdQtyTotal = Object.values(milldoProdCur).reduce((s,v)=>s+v.qty,0);
+
+
+  // ---- 주요상품 실적 · 신메뉴 실적 · 전체 사이즈 비중 (아이템코드 → 공식 제품군 마스터 기준) ----
+  function newBucket(){ return {qty:0, net:0, standardQty:0, standardNet:0, grandQty:0, grandNet:0, ventiQty:0, ventiNet:0, hasSizeInfo:false}; }
+  // 버킷은 label(표시명) 기준으로 유일하게 키를 잡습니다. 각 정의는 group(제품군명 일치) 또는
+  // codes(특정 아이템코드 목록, 공용 그룹을 정밀하게 쪼갤 때 사용) 중 하나로 매칭됩니다.
+  const featuredBuckets = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ featuredBuckets[d.label] = newBucket(); });
+  const newMenuBuckets = {}; NEW_MENU_PRODUCTS_DEF.forEach(d=>{ newMenuBuckets[d.label] = newBucket(); });
+  const featuredCodeMap = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ (d.codes||[]).forEach(c=>{ featuredCodeMap[normCode(c)] = d.label; }); });
+  const newMenuCodeMap = {}; NEW_MENU_PRODUCTS_DEF.forEach(d=>{ (d.codes||[]).forEach(c=>{ newMenuCodeMap[normCode(c)] = d.label; }); });
+  const featuredGroupMap = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ if(d.group) featuredGroupMap[d.group] = d.label; });
+  const newMenuGroupMap = {}; NEW_MENU_PRODUCTS_DEF.forEach(d=>{ if(d.group) newMenuGroupMap[d.group] = d.label; });
+  let overallStandardNet=0, overallGrandNet=0, overallVentiNet=0;
+  monthProdRows.forEach(r=>{
+    const qty = num(r[PCOL.qty]), net = num(r[PCOL.net]);
+    const codeNorm = PCOL.code>=0 ? normCode(r[PCOL.code]) : '';
+    const master = codeNorm && CODE_MASTER[codeNorm] ? CODE_MASTER[codeNorm] : null;
+    let group = master ? master[0] : null;
+    let size = master ? master[1] : null;
+    if(!master){
+      // 마스터에 코드가 없는 극히 일부 상품은 이름 접미사(S/G/V)로 사이즈만 예비 추정
+      const guess = coreProductName(str(r[PCOL.name]));
+      size = guess.size==='S'?'STANDARD':guess.size==='G'?'GRAND':guess.size==='V'?'VENTI':null;
+    }
+    if(size==='STANDARD') overallStandardNet += net;
+    else if(size==='GRAND') overallGrandNet += net;
+    else if(size==='VENTI') overallVentiNet += net;
+    // 코드 지정(codes) 매칭이 그룹(group) 매칭보다 우선합니다.
+    const fKey = (codeNorm && featuredCodeMap[codeNorm]) || (group && featuredGroupMap[group]);
+    if(fKey && featuredBuckets[fKey]){
+      const b = featuredBuckets[fKey];
+      b.qty+=qty; b.net+=net;
+      if(size==='STANDARD'){ b.standardQty+=qty; b.standardNet+=net; b.hasSizeInfo=true; }
+      else if(size==='GRAND'){ b.grandQty+=qty; b.grandNet+=net; b.hasSizeInfo=true; }
+      else if(size==='VENTI'){ b.ventiQty+=qty; b.ventiNet+=net; b.hasSizeInfo=true; }
+    }
+    const nKey = (codeNorm && newMenuCodeMap[codeNorm]) || (group && newMenuGroupMap[group]);
+    if(nKey && newMenuBuckets[nKey]){
+      newMenuBuckets[nKey].qty+=qty; newMenuBuckets[nKey].net+=net;
+    }
+  });
+  const featuredProductStats = FEATURED_PRODUCTS_DEF.map(d=>{
+    const a = featuredBuckets[d.label];
+    const sizeTotal = a.standardNet + a.grandNet + a.ventiNet;
+    return {
+      name: d.label, qty:a.qty, net:a.net, share: prodTotalNet>0? a.net/prodTotalNet:0,
+      avgDailyQty: DAY_CUTOFF>0 ? a.qty/DAY_CUTOFF : 0,
+      hasSizeInfo: a.hasSizeInfo,
+      standardQty:a.standardQty, standardNet:a.standardNet, standardShare: sizeTotal>0? a.standardNet/sizeTotal:0,
+      grandQty:a.grandQty, grandNet:a.grandNet, grandShare: sizeTotal>0? a.grandNet/sizeTotal:0,
+      ventiQty:a.ventiQty, ventiNet:a.ventiNet, ventiShare: sizeTotal>0? a.ventiNet/sizeTotal:0,
+    };
+  });
+  const newMenuStats = NEW_MENU_PRODUCTS_DEF.map(d=>{
+    const a = newMenuBuckets[d.label];
+    return {
+      name: d.label, qty:a.qty, net:a.net, share: prodTotalNet>0? a.net/prodTotalNet:0,
+      avgDailyQty: DAY_CUTOFF>0 ? a.qty/DAY_CUTOFF : 0,
+    };
+  });
+  const overallSizeMix = { standard: overallStandardNet, grand: overallGrandNet, venti: overallVentiNet };
+
+
+  // ---- 소분류 · 상품 전년 대비 성장/부진 TOP5 (전년·당월 모두 실적이 있는 항목만 비교) ----
+  // 전년 매출이 아주 작은(예: 1~2개) 항목은 절대값은 미미해도 %로는 수백%씩 튀어 보일 수 있어,
+  // 최소 기준(전년 매출 1만원 이상)을 넘는 항목만 성장/부진 순위에 포함합니다.
+  const GROWTH_MIN_LY_NET = 10000;
+  const subGrowthCandidates = subList
+    .filter(x=>x.lyNet!=null && x.lyNet>=GROWTH_MIN_LY_NET && x.net>0)
+    .map(x=>({ name:x.name, net:x.net, lyNet:x.lyNet, growth:(x.net-x.lyNet)/x.lyNet }));
+  const subGrowthUp = subGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth).slice(0,5);
+  const subGrowthDown = subGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth).slice(0,5);
+
+  const prodGrowthCandidates = productAll
+    .filter(x=>x.lyNet!=null && x.lyNet>=GROWTH_MIN_LY_NET && x.net>0)
+    .map(x=>({ name:x.name, net:x.net, lyNet:x.lyNet, growth:(x.net-x.lyNet)/x.lyNet }));
+  const prodGrowthUp = prodGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth).slice(0,5);
+  const prodGrowthDown = prodGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth).slice(0,5);
+
+
+  return { coffeeMix, milldoNet, milldoQty, milldoProductList, milldoProdQtyTotal,
+    subGrowthUp, subGrowthDown, prodGrowthUp, prodGrowthDown, featuredProductStats, newMenuStats, overallSizeMix };
+}
+// 폐기 TOP20·사유별·요일별 추이를 분석 기간 데이터로 계산합니다.
+function periodWasteCalc(wasteRows, priceMap, daily, cumNet, startStr, endStr){
+  // ---- 6. waste TOP20 (+ 전체 순위) ----
+  const monthWasteRows = wasteRows.filter(r=>{
+    const d = normalizeDateStr(r[COL.waste.date]);
+    return !!d && d>=startStr && d<=endStr;
+  }).map((r, idx)=>({ r, idx }));
+  const wasteGroup = {};
+  monthWasteRows.forEach(({r, idx})=>{
+    const name = str(r[COL.waste.name]);
+    const reason = str(r[COL.waste.reason]);
+    if(!name) return;
+    const key = name + '|||' + reason;
+    let price = num(r[COL.waste.price]);
+    if(!price) price = num(priceMap[name]) || 0;
+    const qty = num(r[COL.waste.qty]);
+    const amt = qty * price;
+    const dateStr = normalizeDateStr(r[COL.waste.date]);
+    if(!wasteGroup[key]) wasteGroup[key] = {name, reason, qty:0, amt:0, firstIdx: idx, lastDate: dateStr};
+    wasteGroup[key].qty += qty; wasteGroup[key].amt += amt;
+    if(!wasteGroup[key].lastDate || dateStr > wasteGroup[key].lastDate) wasteGroup[key].lastDate = dateStr;
+  });
+  const wasteTotalAmt = Object.values(wasteGroup).reduce((s,v)=>s+v.amt,0);
+  const wasteTotalQty = Object.values(wasteGroup).reduce((s,v)=>s+v.qty,0);
+  const wasteRate = cumNet>0 ? wasteTotalAmt/cumNet : 0;
+  const wasteAll = Object.values(wasteGroup).sort((a,b)=> b.amt-a.amt || a.firstIdx-b.firstIdx)
+    .map((w,i)=>({ rank:i+1, name:w.name, qty:w.qty, amt:w.amt, unitPrice: w.qty>0? w.amt/w.qty:0, rate: cumNet>0? w.amt/cumNet:0, reason:w.reason, date:w.lastDate }));
+  const wasteTop20 = wasteAll.slice(0,20);
+
+  // ---- 폐기 사유별 집계 + 일자별 폐기 추이 ----
+  const wasteReasonAgg = {};
+  const wasteDateAgg = {};
+  monthWasteRows.forEach(({r})=>{
+    const name = str(r[COL.waste.name]);
+    if(!name) return;
+    const reason = str(r[COL.waste.reason]) || '(사유 미기재)';
+    let price = num(r[COL.waste.price]);
+    if(!price) price = num(priceMap[name]) || 0;
+    const qty = num(r[COL.waste.qty]);
+    const amt = qty * price;
+    if(!wasteReasonAgg[reason]) wasteReasonAgg[reason] = {qty:0, amt:0};
+    wasteReasonAgg[reason].qty += qty; wasteReasonAgg[reason].amt += amt;
+    const dateStr = normalizeDateStr(r[COL.waste.date]);
+    if(dateStr){
+      if(!wasteDateAgg[dateStr]) wasteDateAgg[dateStr] = {qty:0, amt:0};
+      wasteDateAgg[dateStr].qty += qty; wasteDateAgg[dateStr].amt += amt;
+    }
+  });
+  const wasteReasonList = Object.keys(wasteReasonAgg).map(k=>({
+    reason:k, ...wasteReasonAgg[k], share: wasteTotalAmt>0? wasteReasonAgg[k].amt/wasteTotalAmt:0
+  })).sort((a,b)=>b.amt-a.amt).map((w,i)=>({rank:i+1, ...w}));
+  const WEEKDAY_LABELS = ['월','화','수','목','금','토','일'];
+  const wasteWeekdayAgg = WEEKDAY_LABELS.map(()=>({amt:0, qty:0, count:0}));
+  daily.forEach(d=>{
+    const idx = d.dow - 1;
+    if(idx<0 || idx>6) return;
+    const w = wasteDateAgg[d.dateStr];
+    wasteWeekdayAgg[idx].count += 1;
+    if(w){ wasteWeekdayAgg[idx].amt += w.amt; wasteWeekdayAgg[idx].qty += w.qty; }
+  });
+  const wasteWeekdayTrend = WEEKDAY_LABELS.map((label,i)=>({
+    label,
+    amt: wasteWeekdayAgg[i].count>0 ? wasteWeekdayAgg[i].amt/wasteWeekdayAgg[i].count : 0,
+    qty: wasteWeekdayAgg[i].count>0 ? wasteWeekdayAgg[i].qty/wasteWeekdayAgg[i].count : 0,
+  }));
+
+
+  return { wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, wasteReasonList, wasteWeekdayTrend };
+}
+
+async function computePeriod(c){
+  const { curRows, prevRows, prodRows, PCOL, prodPrevRows, PCOL_LY, posRows, posPrevRows, midMap,
+          storeNorm, storeLabel, targetWB, aoaProd, aoaPos, aoaWaste, wasteRows, priceMap } = c;
+  const curByDate = new Map();
+  curRows.forEach(r=>{ const d = normalizeDateStr(r[COL.dae.date]); if(d) curByDate.set(d, r); });
+  const allDates = [...curByDate.keys()].sort();
+  const startStr = allDates[0];
+  let endStr = startStr;
+  allDates.forEach(d=>{ if(num(curByDate.get(d)[COL.dae.net])>0) endStr = d; });
+  const dates = allDates.filter(d=>d>=startStr && d<=endStr);
+  const inRange = d => !!d && d>=startStr && d<=endStr;
+  const nominalMonths = ymDiff(endStr, startStr) + 1;
+
+  // ---- 비교 기간 날짜 집합 (파일별) ----
+  const prevByDate = new Map();
+  prevRows.forEach(r=>{ const d = normalizeDateStr(r[COL.jeon.date]); if(d) prevByDate.set(d, r); });
+  const salesRefSet = new Set(prevByDate.keys());
+  const prodRefSet = new Set();
+  prodPrevRows.forEach(r=>{ const d = normalizeDateStr(r[PCOL_LY.date]); if(d) prodRefSet.add(d); });
+  const posRefRows = posPrevRows.length ? posPrevRows : posRows;
+  const posRefSet = new Set();
+  posRefRows.forEach(r=>{ const d = normalizeDateStr(r[COL.pos.date]); if(d) posRefSet.add(d); });
+  const unionRef = new Set([...salesRefSet, ...prodRefSet, ...(posPrevRows.length ? posRefSet : [])]);
+
+  // 비교 간격(개월) 자동 판정: 후보 중 "같은 날짜"가 가장 많이 겹치는 간격을 고릅니다.
+  let offset = null;
+  if(unionRef.size){
+    const sortedRef = [...unionRef].sort();
+    const cands = [12, nominalMonths, 1, 3, 6, ymDiff(startStr, sortedRef[0])].filter((v,i,a)=>v>0 && a.indexOf(v)===i);
+    let best = -1;
+    cands.forEach(o=>{
+      let cnt = 0;
+      dates.forEach(d=>{ if(unionRef.has(shiftDateStr(d,-o))) cnt++; });
+      if(cnt>best){ best = cnt; offset = o; }
+    });
+    if(best<=0) offset = null;
+  }
+  const refLabels = offset!=null ? periodRefLabels(offset, nominalMonths) : { label:'전년', period:'전년동기', full:'전년동기' };
+  const refOf = d => offset!=null ? shiftDateStr(d, -offset) : null;
+  const alignedDates = (refSet) => offset==null ? [] : dates.filter(d=>refSet.has(refOf(d)));
+  const salesCmp = alignedDates(salesRefSet);
+  const posCmp = alignedDates(posRefSet);
+  const prodCmp = alignedDates(prodRefSet);
+  const hasPrevYear = salesCmp.length>0;
+
+  const sum = (arr, f) => arr.reduce((s,x)=>s+f(x), 0);
+  const netOf = d => num(curByDate.get(d)[COL.dae.net]);
+  const refNetOf = d => { const r = prevByDate.get(refOf(d)); return r ? num(r[COL.jeon.net]) : 0; };
+
+  // ---- 일자별 ----
+  const daily = dates.map(d=>{
+    const row = curByDate.get(d);
+    const rd = refOf(d);
+    const hasR = hasPrevYear && salesRefSet.has(rd);
+    return { dateStr:d, net:num(row[COL.dae.net]), headcount:num(row[COL.dae.headcount]), headcost:num(row[COL.dae.headcost]),
+             refNet: hasR ? refNetOf(d) : null, dow: isoDow(d), isHoliday: isKrHoliday(d) };
+  });
+  const cumNet = sum(daily, x=>x.net);
+  const salesDays = daily.filter(x=>x.net>0).length;
+  const cumNetForCompare = sum(salesCmp, netOf);
+  const cumLastYear = sum(salesCmp, refNetOf);
+  const cumHeadcount = sum(daily, x=>x.headcount);
+  const avgHeadcost = cumHeadcount>0 ? cumNet/cumHeadcount : 0;
+  const avgHeadcount = (()=>{ const hs = daily.filter(x=>x.headcount>0); return hs.length ? sum(hs,x=>x.headcount)/hs.length : 0; })();
+
+  // ---- 월별 ----
+  const monthKeys = [];
+  for(let i=0;i<nominalMonths;i++){ const [y,m] = shiftDateStr(startStr, i).split('-'); monthKeys.push(`${y}-${m}`); }
+  const sameYear = startStr.slice(0,4) === endStr.slice(0,4);
+  const plan12 = (targetWB && sameYear) ? readMonthlyPlanTargets(targetWB, storeNorm) : new Array(12).fill(0);
+  const hasPlan = plan12.some(v=>v>0);
+  const monthly = monthKeys.map(ym=>{
+    const [y,m] = ym.split('-').map(Number);
+    const ds = daily.filter(x=>x.dateStr.startsWith(ym));
+    const net = sum(ds, x=>x.net);
+    const cmpDs = salesCmp.filter(d=>d.startsWith(ym));
+    const cmpNet = sum(cmpDs, netOf), refNet = sum(cmpDs, refNetOf);
+    const hc = sum(ds, x=>x.headcount);
+    const complete = ds.length>0 && ds[0].dateStr === `${ym}-01` && ds[ds.length-1].dateStr === `${ym}-${pad2(daysInMonth(y,m))}`;
+    const target = (hasPlan && sameYear) ? plan12[m-1] : 0;
+    return { ym, year:y, month:m, net, days: ds.filter(x=>x.net>0).length, avgNet: ds.filter(x=>x.net>0).length ? net/ds.filter(x=>x.net>0).length : 0,
+      headcount:hc, headcost: hc>0 ? net/hc : 0, cmpNet, refNet, hasRef: cmpDs.length>0 && refNet>0,
+      growth: refNet>0 ? cmpNet/refNet-1 : null, complete, target, achieve: (target>0 && complete) ? net/target : null };
+  });
+  // 월평균 환산용 개월 수: 월별 (반영된 일수 / 그 달 일수)의 합 (마지막 달이 일부만 반영되면 그만큼만 센다)
+  const effMonths = monthly.reduce((s,m)=>s + (daysInMonth(m.year,m.month)>0 ? daily.filter(x=>x.dateStr.startsWith(m.ym)).length/daysInMonth(m.year,m.month) : 0), 0) || 1;
+  const completeMonths = monthly.filter(m=>m.complete && m.target>0);
+  const periodTarget = sum(completeMonths, m=>m.target);
+  const periodTargetActual = sum(completeMonths, m=>m.net);
+
+  // ---- 채널 (POS/KIOSK/DT = 결제수단별승인내역, 배달 = 종합매출현황, 멤버십카드) ----
+  const chanMap = rows => { const m = {}; rows.forEach(r=>{
+    const d = normalizeDateStr(r[COL.pos.date]); if(!d) return;
+    const o = m[d] || (m[d] = {pos:0,kiosk:0,dt:0,member:0});
+    const posno = str(r[COL.pos.posno]), v = num(r[COL.pos.net]);
+    if(posno.startsWith('000')) o.pos += v; else if(posno.startsWith('001')) o.dt += v; else if(posno.startsWith('003')) o.kiosk += v;
+    if(str(r[COL.pos.detail]) === '폴바셋 멤버십카드') o.member += v;
+  }); return m; };
+  const curChan = chanMap(posRows), refChan = chanMap(posRefRows);
+  const cz = {pos:0,kiosk:0,dt:0,member:0};
+  const cs = (m, ds, k) => sum(ds, d=>(m[d]||cz)[k]);
+  const refCs = (ds, k) => sum(ds, d=>(refChan[refOf(d)]||cz)[k]);
+  const deliveryOf = row => row ? sum(COL.dae.delivery, ci=>num(row[ci])) : 0;
+  const posTotal = cs(curChan, dates, 'pos'), kioskTotal = cs(curChan, dates, 'kiosk'), dtTotal = cs(curChan, dates, 'dt'), memberTotal = cs(curChan, dates, 'member');
+  const deliveryTotal = sum(dates, d=>deliveryOf(curByDate.get(d)));
+  const hasRefChannel = posCmp.length>0 && (refCs(posCmp,'pos')>0 || refCs(posCmp,'kiosk')>0 || refCs(posCmp,'dt')>0);
+  const refPosTotal = refCs(posCmp,'pos'), refKioskTotal = refCs(posCmp,'kiosk'), refDtTotal = refCs(posCmp,'dt'), refMemberTotal = refCs(posCmp,'member');
+  const refDeliveryTotal = sum(salesCmp, d=>deliveryOf(prevByDate.get(refOf(d))));
+
+  // ---- 조수/조단가·평일/주말 ----
+  const groupStats = (items) => {
+    const act = items.filter(x=>x.net>0);
+    const hs = act.filter(x=>x.headcount>0), cs2 = act.filter(x=>x.headcost>0);
+    return { avgNet: act.length ? sum(act,x=>x.net)/act.length : 0,
+      avgHeadcount: hs.length ? sum(hs,x=>x.headcount)/hs.length : 0,
+      avgHeadcost: cs2.length ? sum(cs2,x=>x.headcost)/cs2.length : 0 };
+  };
+  const isWeekend = x => x.isHoliday || x.dow>=6;
+  const weekdayStats = groupStats(daily.filter(x=>!isWeekend(x)));
+  const weekendStats = groupStats(daily.filter(isWeekend));
+  let lastYearTraffic = null;
+  if(hasPrevYear){
+    const refItems = salesCmp.map(d=>{ const r = prevByDate.get(refOf(d)); const rd = refOf(d);
+      return { net:num(r[COL.jeon.net]), headcount:num(r[COL.jeon.headcount]), headcost:num(r[COL.jeon.headcost]), dow:isoDow(rd), isHoliday:isKrHoliday(rd) }; });
+    const rHc = sum(refItems, x=>x.headcount), rNet = sum(refItems, x=>x.net);
+    const hs = refItems.filter(x=>x.headcount>0);
+    lastYearTraffic = { avgHeadcount: hs.length ? sum(hs,x=>x.headcount)/hs.length : 0, headcost: rHc>0 ? rNet/rHc : 0,
+      weekdayStats: groupStats(refItems.filter(x=>!(x.isHoliday||x.dow>=6))), weekendStats: groupStats(refItems.filter(x=>x.isHoliday||x.dow>=6)) };
+  }
+  // 요일별 일평균 매출 (월~일)
+  const dowCur = periodDowStats(daily.map(x=>({dateStr:x.dateStr, net:x.net})));
+  const dowRef = hasPrevYear ? periodDowStats(salesCmp.map(d=>({dateStr:refOf(d), net:refNetOf(d)}))) : null;
+
+  // ---- 최고/최저 매출일 ----
+  const actDays = daily.filter(x=>x.net>0);
+  const bestDay = actDays.length ? actDays.reduce((a,b)=>b.net>a.net?b:a) : null;
+  const worstDay = actDays.length ? actDays.reduce((a,b)=>b.net<a.net?b:a) : null;
+
+  // ---- 카테고리 / 상품 ----
+  const curProd = prodRows.filter(r=>inRange(normalizeDateStr(r[PCOL.date])));
+  const prodCmpSet = new Set(prodCmp.map(refOf));
+  const refProd = prodPrevRows.filter(r=>prodCmpSet.has(normalizeDateStr(r[PCOL_LY.date])));
+  const hasProdLY = refProd.length>0;
+  const catCur = aggregateCategoryData(curProd, PCOL, midMap);
+  const catRef = hasProdLY ? aggregateCategoryData(refProd, PCOL_LY, midMap) : null;
+  const cats = periodCategoryLists(catCur, catRef, hasProdLY, midMap);
+  const grp = (rows, P) => { const g = {}; rows.forEach(r=>{ const n = str(r[P.name]); if(!n || n==='합계') return;
+    const o = g[n] || (g[n] = {qty:0, net:0}); o.qty += num(r[P.qty]); o.net += num(r[P.net]); }); return g; };
+  const pg = grp(curProd, PCOL), pgLY = hasProdLY ? grp(refProd, PCOL_LY) : {};
+  const prodTotalNet = sum(Object.values(pg), v=>v.net), prodTotalQty = sum(Object.values(pg), v=>v.qty);
+  const prodTotalNetLY = sum(Object.values(pgLY), v=>v.net);
+  const productAll = Object.keys(pg).map(k=>{ const ly = pgLY[k];
+    return { name:k, ...pg[k], share: prodTotalNet>0 ? pg[k].net/prodTotalNet : 0,
+      lyQty: hasProdLY ? (ly?ly.qty:0) : null, lyNet: hasProdLY ? (ly?ly.net:0) : null,
+      lyShare: hasProdLY ? (prodTotalNetLY>0 ? (ly?ly.net:0)/prodTotalNetLY : 0) : null };
+  }).sort((a,b)=>b.net-a.net).map((p,i)=>({rank:i+1, ...p}));
+
+  const extras = periodProductExtras(curProd, refProd, PCOL, PCOL_LY, salesDays, hasProdLY, prodTotalNet, cats.subList, productAll);
+  const wasteCalc = periodWasteCalc(wasteRows || [], priceMap || {}, daily, cumNet, startStr, endStr);
+
+  // ---- 예상 실적: 마지막 달이 아직 끝나지 않았을 때 마지막 달 말일까지의 요일별 평균 기반 추정 ----
+  let forecast = null;
+  {
+    const [fy,fm,fd] = endStr.split('-').map(Number);
+    const lastDim = daysInMonth(fy,fm);
+    if(fd < lastDim){
+      const grpOf = ds => { const dw = isoDow(ds); return (isKrHoliday(ds) || dw===7) ? 7 : dw; };
+      const sumG = {}, cntG = {};
+      daily.forEach(x=>{ if(!(x.net>0)) return; const g = grpOf(x.dateStr); sumG[g]=(sumG[g]||0)+x.net; cntG[g]=(cntG[g]||0)+1; });
+      const overall = salesDays ? cumNet/salesDays : 0;
+      let add = 0, refAdd = 0, refAddDays = 0, remain = 0;
+      for(let d=fd+1; d<=lastDim; d++){
+        const ds = `${fy}-${pad2(fm)}-${pad2(d)}`; remain++;
+        const g = grpOf(ds); add += cntG[g] ? sumG[g]/cntG[g] : overall;
+        const rr = offset!=null ? prevByDate.get(refOf(ds)) : null;
+        if(rr){ refAdd += num(rr[COL.jeon.net]); refAddDays++; }
+      }
+      const refOk = hasPrevYear && refAddDays===remain;
+      const planTarget = hasPlan ? sum(monthKeys, ym=>plan12[+ym.slice(5)-1]) : 0;
+      forecast = { value: cumNet+add, add, remainingDays: remain, endLabel: `${fy}.${pad2(fm)}.${pad2(lastDim)}`,
+        refTotal: refOk ? cumLastYear+refAdd : null, target: planTarget };
+    }
+  }
+
+  const toYmd = s => s.replace(/-/g,'.');
+  return {
+    isPeriod:true,
+    storeName: str(document.getElementById('storeNameInput').value) || '폴 바셋',
+    isDtStore: !!(storeLabel && storeLabel.toUpperCase().includes('DT')),
+    periodTitle: periodTitleOf(startStr, endStr), startStr, endStr, startLabel: toYmd(startStr), endLabel: toYmd(endStr),
+    nominalMonths, effMonths, totalDays: dates.length, salesDays,
+    refLabel: refLabels.label, refPeriodLabel: refLabels.period, refLabelFull: refLabels.full, refOffset: offset,
+    refRangeLabel: salesCmp.length ? `${toYmd(refOf(salesCmp[0]))} ~ ${toYmd(refOf(salesCmp[salesCmp.length-1]))}` : '',
+    cmpDays: salesCmp.length,
+    hasPrevYear, daily, monthly, hasPlan, periodTarget, periodTargetActual,
+    cumNet, cumNetForCompare, cumLastYear, avgDailyNet: salesDays ? cumNet/salesDays : 0,
+    avgHeadcount, avgHeadcost, cumHeadcount, weekdayStats, weekendStats, lastYearTraffic,
+    dowCur, dowRef, bestDay, worstDay,
+    posTotal, kioskTotal, dtTotal, deliveryTotal, memberTotal,
+    refPosTotal, refKioskTotal, refDtTotal, refDeliveryTotal, refMemberTotal, hasRefChannel, hasRefMember: refMemberTotal>0,
+    posTotalForCompare: cs(curChan,posCmp,'pos'), kioskTotalForCompare: cs(curChan,posCmp,'kiosk'), dtTotalForCompare: cs(curChan,posCmp,'dt'),
+    memberTotalForCompare: cs(curChan,posCmp,'member'),
+    deliveryTotalForCompare: sum(salesCmp, d=>deliveryOf(curByDate.get(d))),
+    hasPos: !!aoaPos, hasProd: !!aoaProd, hasProdLY,
+    midList: cats.midList, midTotal: cats.midTotal, subList: cats.subList, subTotal: cats.subTotal, midDetailList: cats.midDetailList,
+    productAll, productTop20: productAll.slice(0,20), prodTotalNet, prodTotalQty,
+    ...extras, ...wasteCalc, hasWaste: !!aoaWaste, forecast,
+  };
+}
+
+/* ---------- 기간 분석 렌더 ---------- */
+function periodMonthlyChartSVG(monthly, refLabel, showRef){
+  const W = 900, H = 300, padL = 56, padR = 16, padT = 26, padB = 34;
+  const pw = W-padL-padR, ph = H-padT-padB;
+  const maxV = Math.max(1, ...monthly.map(m=>Math.max(m.net, showRef ? m.refNet : 0)));
+  const nice = (() => { const p = Math.pow(10, Math.floor(Math.log10(maxV))); const f = maxV/p; return (f<=1?1:f<=2?2:f<=5?5:10)*p; })();
+  const n = monthly.length, slot = pw/n, bw = Math.min(46, slot*(showRef?0.36:0.6));
+  let g = '';
+  for(let i=0;i<=4;i++){
+    const v = nice*i/4, y = padT + ph - ph*i/4;
+    g += `<line x1="${padL}" x2="${W-padR}" y1="${y}" y2="${y}" stroke="#E7E7E9" stroke-dasharray="3 4"/><text x="${padL-8}" y="${y+4}" text-anchor="end" font-size="11" fill="#9A9AA0">${v>=1e8 ? (v/1e8).toFixed(1)+'억' : Math.round(v/1e4).toLocaleString('ko-KR')+'만'}</text>`;
+  }
+  monthly.forEach((m,i)=>{
+    const cx = padL + slot*i + slot/2;
+    const hCur = ph*m.net/nice, hRef = showRef ? ph*m.refNet/nice : 0;
+    const xCur = showRef ? cx-bw-1 : cx-bw/2, xRef = cx+1;
+    g += `<rect x="${xCur}" y="${padT+ph-hCur}" width="${bw}" height="${hCur}" rx="3" fill="#E4002B"/>`;
+    if(showRef && m.refNet>0) g += `<rect x="${xRef}" y="${padT+ph-hRef}" width="${bw}" height="${hRef}" rx="3" fill="#B9B9BF"/>`;
+    g += `<text x="${showRef ? xCur+bw/2 : cx}" y="${padT+ph-hCur-5}" text-anchor="middle" font-size="10.5" font-weight="700" fill="#17171A">${Math.round(m.net/1e4).toLocaleString('ko-KR')}</text>`;
+    if(showRef && m.refNet>0) g += `<text x="${xRef+bw/2}" y="${padT+ph-hRef-5}" text-anchor="middle" font-size="10.5" fill="#6B6B72">${Math.round(m.refNet/1e4).toLocaleString('ko-KR')}</text>`;
+    g += `<text x="${cx}" y="${H-12}" text-anchor="middle" font-size="12" font-weight="700" fill="#58585F">${m.year!==monthly[0].year ? String(m.year).slice(2)+'.' : ''}${m.month}월</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:100%"><text x="${padL}" y="14" font-size="11" fill="#9A9AA0">단위: 만원</text>${g}</svg>`;
+}
+function periodTrendChartSVG(daily, showRef){
+  const bucket = daily.length>100 ? 7 : 1;
+  const pts = [];
+  for(let i=0;i<daily.length;i+=bucket){
+    const sl = daily.slice(i,i+bucket);
+    const refs = sl.filter(x=>x.refNet!=null);
+    pts.push({ label: sl[0].dateStr, net: sl.reduce((s,x)=>s+x.net,0), ref: refs.length ? refs.reduce((s,x)=>s+x.refNet,0) : null });
+  }
+  const W = 900, H = 260, padL = 56, padR = 16, padT = 24, padB = 30;
+  const pw = W-padL-padR, ph = H-padT-padB;
+  const maxV = Math.max(1, ...pts.map(p=>Math.max(p.net, showRef && p.ref ? p.ref : 0)));
+  const x = i => padL + (pts.length<=1 ? pw/2 : pw*i/(pts.length-1));
+  const y = v => padT + ph - ph*v/maxV;
+  const line = (key, color, w) => {
+    let d = '', pen = false;
+    pts.forEach((p,i)=>{ if(p[key]==null){ pen=false; return; } d += `${pen?'L':'M'}${x(i).toFixed(1)},${y(p[key]).toFixed(1)} `; pen=true; });
+    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"/>`;
+  };
+  let g = '';
+  for(let i=0;i<=4;i++){
+    const v = maxV*i/4, yy = padT + ph - ph*i/4;
+    g += `<line x1="${padL}" x2="${W-padR}" y1="${yy}" y2="${yy}" stroke="#E7E7E9" stroke-dasharray="3 4"/><text x="${padL-8}" y="${yy+4}" text-anchor="end" font-size="11" fill="#9A9AA0">${Math.round(v/1e4).toLocaleString('ko-KR')}만</text>`;
+  }
+  const ticks = Math.min(6, pts.length);
+  for(let t=0;t<ticks;t++){
+    const i = ticks===1 ? 0 : Math.round((pts.length-1)*t/(ticks-1));
+    g += `<text x="${x(i)}" y="${H-10}" text-anchor="middle" font-size="11" fill="#9A9AA0">${pts[i].label.slice(5).replace('-','/')}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block"><text x="${padL}" y="12" font-size="11" fill="#9A9AA0">${bucket>1?'주간 합계':'일별'} 매출 (단위: 만원)</text>${g}${showRef?line('ref','#B9B9BF',2):''}${line('net','#E4002B',2.4)}</svg>`;
+}
+function completeMonthCount(kpi){ return kpi.monthly.filter(m=>m.complete && m.target>0).length; }
+function periodMonthlyTable(kpi){
+  const L = kpi.refLabel;
+  const showRef = kpi.hasPrevYear;
+  const rows = kpi.monthly.map(m=>`<tr>
+      <td style="text-align:left">${m.year}년 ${m.month}월${m.complete?'':' <span style="color:var(--text-mute);font-size:.72rem">(일부)</span>'}</td>
+      <td>${fmtNum(m.days)}일</td>
+      <td>${fmtWon(m.net)}</td>
+      <td>${fmtWon(m.avgNet)}</td>
+      ${showRef?`<td>${m.hasRef?fmtWon(m.refNet):'-'}</td><td class="${m.growth===null?'':(m.growth>=0?'pos':'neg')}">${m.growth===null?'-':(m.growth>=0?'▲ ':'▼ ')+fmtSignedPct(m.growth)}</td>`:''}
+      ${kpi.hasPlan?`<td>${m.target>0?fmtWon(m.target):'-'}</td><td class="${m.achieve===null?'':(m.achieve>=1?'pos':'neg')}">${m.achieve===null?'-':fmtPct(m.achieve)}</td>`:''}
+      <td>${fmtNum(m.headcount)}</td><td>${fmtWon(m.headcost)}</td>
+    </tr>`).join('');
+  const totGrowth = kpi.cumLastYear>0 ? kpi.cumNetForCompare/kpi.cumLastYear-1 : null;
+  return `<div class="tablewrap"><table class="dt">
+    <thead><tr><th style="text-align:left">월</th><th>영업일</th><th>매출</th><th>일평균</th>
+      ${showRef?`<th>${L} 매출</th><th>${L}비</th>`:''}
+      ${kpi.hasPlan?'<th>월 목표</th><th>달성률</th>':''}<th>조수</th><th>조단가</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td style="text-align:left">합계</td><td>${fmtNum(kpi.salesDays)}일</td><td>${fmtWon(kpi.cumNet)}</td><td>${fmtWon(kpi.avgDailyNet)}</td>
+      ${showRef?`<td>${fmtWon(kpi.cumLastYear)}</td><td class="${totGrowth===null?'':(totGrowth>=0?'pos':'neg')}">${totGrowth===null?'-':(totGrowth>=0?'▲ ':'▼ ')+fmtSignedPct(totGrowth)}</td>`:''}
+      ${kpi.hasPlan?`<td>${kpi.periodTarget>0?fmtWon(kpi.periodTarget):'-'}</td><td>${kpi.periodTarget>0?fmtPct(kpi.periodTargetActual/kpi.periodTarget):'-'}</td>`:''}
+      <td>${fmtNum(kpi.cumHeadcount)}</td><td>${fmtWon(kpi.avgHeadcost)}</td></tr>
+      <tr><td style="text-align:left">월평균 (${kpi.effMonths.toFixed(1)}개월 환산)</td><td>${fmtNum(kpi.salesDays/kpi.effMonths)}일</td><td>${fmtWon(kpi.cumNet/kpi.effMonths)}</td><td>${fmtWon(kpi.avgDailyNet)}</td>
+      ${showRef?`<td>${fmtWon(kpi.cumLastYear/kpi.effMonths)}</td><td></td>`:''}
+      ${kpi.hasPlan?`<td>${kpi.periodTarget>0?fmtWon(kpi.periodTarget/(completeMonthCount(kpi)||1)):'-'}</td><td></td>`:''}
+      <td>${fmtNum(kpi.cumHeadcount/kpi.effMonths)}</td><td>${fmtWon(kpi.avgHeadcost)}</td></tr></tfoot>
+  </table></div>`;
+}
+function periodDowTable(kpi){
+  const names = ['월','화','수','목','금','토','일'];
+  const showRef = !!kpi.dowRef;
+  const rows = names.map((nm,i)=>{
+    const c = kpi.dowCur[i], r = showRef ? kpi.dowRef[i] : null;
+    const g = (r && r.avg>0 && c.avg>0) ? c.avg/r.avg-1 : null;
+    return `<tr><td style="text-align:left">${nm}요일</td><td>${c.n}일</td><td>${fmtWon(c.avg)}</td>
+      ${showRef?`<td>${fmtWon(r.avg)}</td><td class="${g===null?'':(g>=0?'pos':'neg')}">${g===null?'-':(g>=0?'▲ ':'▼ ')+fmtSignedPct(g)}</td>`:''}</tr>`;
+  }).join('');
+  return `<div class="tablewrap"><table class="dt"><thead><tr><th style="text-align:left">요일</th><th>영업일</th><th>일평균 매출</th>${showRef?`<th>${kpi.refLabel} 일평균</th><th>${kpi.refLabel}비</th>`:''}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// ---- 누계 / 월평균 보기 전환 ----
+let PERIOD_RAW = null, PERIOD_AVG = false;
+const PERIOD_SCALE_FIELDS = ['qty','net','lyQty','lyNet','amt','standardQty','standardNet','grandQty','grandNet','ventiQty','ventiNet'];
+function scalePeriodKpi(k, N){
+  const c = Object.assign({}, k);
+  const sc = v => (v==null || !isFinite(v)) ? v : v/N;
+  ['cumNet','cumNetForCompare','cumLastYear','periodTarget','periodTargetActual',
+   'posTotal','kioskTotal','dtTotal','deliveryTotal','memberTotal','refPosTotal','refKioskTotal','refDtTotal','refDeliveryTotal','refMemberTotal',
+   'posTotalForCompare','kioskTotalForCompare','dtTotalForCompare','memberTotalForCompare','deliveryTotalForCompare',
+   'midTotal','subTotal','prodTotalNet','prodTotalQty','milldoNet','milldoQty','milldoProdQtyTotal','wasteTotalAmt','wasteTotalQty'
+  ].forEach(f=>{ if(f in c) c[f] = sc(c[f]); });
+  const items = arr => Array.isArray(arr) ? arr.map(o=>{ const n = Object.assign({}, o); PERIOD_SCALE_FIELDS.forEach(f=>{ if(typeof n[f]==='number') n[f] = n[f]/N; }); return n; }) : arr;
+  ['midList','subList','productAll','productTop20','featuredProductStats','newMenuStats','milldoProductList','wasteAll','wasteTop20','wasteReasonList',
+   'subGrowthUp','subGrowthDown','prodGrowthUp','prodGrowthDown'].forEach(f=>{ if(f in c) c[f] = items(c[f]); });
+  if(c.midDetailList){
+    const d = {};
+    Object.keys(c.midDetailList).forEach(key=>{ const m = c.midDetailList[key];
+      d[key] = { subs: items(m.subs), prods: items(m.prods), subTotal: sc(m.subTotal), prodQtyTotal: sc(m.prodQtyTotal) }; });
+    c.midDetailList = d;
+  }
+  ['overallSizeMix','coffeeMix'].forEach(f=>{ if(c[f]){ const o = {}; Object.keys(c[f]).forEach(k2=>{ o[k2] = sc(c[f][k2]); }); c[f] = o; } });
+  if(c.forecast){ c.forecast = Object.assign({}, c.forecast, { value: sc(c.forecast.value), add: sc(c.forecast.add), refTotal: sc(c.forecast.refTotal), target: sc(c.forecast.target) }); }
+  c.isAvgView = true;
+  Object.defineProperty(c, '__raw', { value:k, enumerable:false });
+  return c;
+}
+function setPeriodMode(avg){
+  if(!PERIOD_RAW || PERIOD_AVG===avg) return;
+  PERIOD_AVG = avg;
+  const y = window.scrollY;
+  renderPeriod(PERIOD_RAW);
+  window.scrollTo(0, y);
+}
+
+function renderPeriod(raw){
+  const kpi = PERIOD_AVG ? scalePeriodKpi(raw, raw.effMonths) : raw;
+  CURRENT_KPI = kpi;
+  const avgTag = PERIOD_AVG ? '월평균 ' : '';
+  const el = document.getElementById('dashScreen');
+  const g = kpi.cumLastYear>0 ? kpi.cumNetForCompare/kpi.cumLastYear-1 : null;
+  const growthTxt = (v, label) => v===null ? `${label}비 -` : `${label}비 <span class="${v>=0?'pos':'neg'}">${v>=0?'▲':'▼'} ${fmtSignedPct(v)}</span>`;
+  const channelTotal = kpi.posTotal + kpi.kioskTotal + kpi.dtTotal;
+  const refChannelTotal = kpi.refPosTotal + kpi.refKioskTotal + kpi.refDtTotal;
+  const channelTotalForCompare = kpi.posTotalForCompare + kpi.kioskTotalForCompare + kpi.dtTotalForCompare;
+  const achieve = kpi.periodTarget>0 ? kpi.periodTargetActual/kpi.periodTarget : null;
+  const dayTxt = x => x ? `${x.dateStr.slice(5).replace('-','/')} · ${fmtWon(x.net)}` : '-';
+  const emptyProd = `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았거나 분석 기간의 데이터가 없습니다.</div>`;
+  el.innerHTML = `
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div class="brand-mark" style="height:44px"></div>
+        <div>
+          <div class="store">${kpi.storeName} <span class="period">· ${kpi.periodTitle} 실적</span></div>
+          <div class="meta">분석 기간 ${kpi.startLabel} ~ ${kpi.endLabel} (${kpi.nominalMonths}개월 · 영업일 ${kpi.salesDays}일)${kpi.hasPrevYear ? ` · 비교 기간 ${kpi.refRangeLabel} (${kpi.refLabel}, 같은 날짜 ${kpi.cmpDays}일 비교)` : ' · 비교 기간 데이터 없음'}</div>
+        </div>
+      </div>
+      <div class="actions">
+        <span class="top-search-wrap"><input type="text" id="topSearchInput" class="top-search" placeholder="상품명으로 검색 (예: 아메리카노)"></span>
+        <button class="btn ghost small" id="topSearchBtn">검색</button>
+        <button class="btn ghost small" onclick="exportHTML()">HTML</button>
+        <button class="btn ghost small" onclick="exportExcel(event)">Excel</button>
+        <button class="btn ghost small" onclick="exportPDF(event)">PDF</button>
+        <button class="btn ghost small" onclick="location.reload()">다시 업로드</button>
+      </div>
+    </div>
+
+    <div class="period-mode">
+      <span class="period-mode-label">금액 보기</span>
+      <button class="pm-btn ${PERIOD_AVG?'':'on'}" onclick="setPeriodMode(false)">기간 누계</button>
+      <button class="pm-btn ${PERIOD_AVG?'on':''}" onclick="setPeriodMode(true)">월평균</button>
+      <span class="period-mode-note">${PERIOD_AVG ? `금액·수량은 기간 합계를 ${raw.effMonths.toFixed(1)}개월(반영 일수 기준 환산)로 나눈 값입니다. 증감률·비중·조수·조단가·일평균은 그대로입니다.` : `월평균 = 기간 합계 ÷ ${raw.effMonths.toFixed(1)}개월 (반영 일수 기준 환산)`}</span>
+    </div>
+
+    ${block('KPI', `${kpi.periodTitle} ${PERIOD_AVG?'월평균':'누계'} 실적 (${kpi.startLabel.slice(5)}~${kpi.endLabel.slice(5)})`, `
+      <div class="cards">
+        <div class="card"><div class="label">${PERIOD_AVG ? '월평균 매출' : '기간 누계 매출'}</div><div class="value">${fmtWon(kpi.cumNet)}</div>
+          <div class="sub">${kpi.hasPrevYear ? growthTxt(g, kpi.refLabel) : `${kpi.refLabel} 데이터 없음`}${PERIOD_AVG ? '' : ` · 월평균 ${fmtWon(raw.cumNet/raw.effMonths)}`}</div></div>
+        <div class="card"><div class="label">일평균 매출</div><div class="value">${fmtWon(kpi.avgDailyNet)}</div><div class="sub">영업일 ${fmtNum(kpi.salesDays)}일 기준</div></div>
+        <div class="card"><div class="label">${kpi.refPeriodLabel} 매출</div><div class="value">${kpi.hasPrevYear ? fmtWon(kpi.cumLastYear) : '-'}</div>${kpi.hasPrevYear ? `<div class="sub">같은 날짜 ${kpi.cmpDays}일 기준</div>` : ''}</div>
+        ${achieve!==null ? `<div class="card gauge-card">${gaugeSVG(achieve)}<div><div class="label">목표 달성률</div><div class="value" style="font-size:1.3rem;color:${achieve>=1?'var(--rise)':'var(--negative)'}">${fmtPct(achieve)}</div><div class="sub">완료된 월 기준 · 목표 ${fmtWon(kpi.periodTarget)}</div></div></div>` : ''}
+        <div class="card"><div class="label">최고 매출일</div><div class="value" style="font-size:1.1rem">${dayTxt(kpi.bestDay)}</div></div>
+        <div class="card"><div class="label">최저 매출일(영업일 기준)</div><div class="value" style="font-size:1.1rem">${dayTxt(kpi.worstDay)}</div></div>
+      </div>
+    `)}
+
+    ${kpi.forecast ? block('FORECAST', `${kpi.periodTitle.replace(/\s*\(.*\)$/,'')} 예상 실적 (~${kpi.forecast.endLabel.slice(5)})`, `
+      <div class="cards">
+        <div class="card"><div class="label">예상 매출</div><div class="value">${fmtWon(kpi.forecast.value)}</div>
+          <div class="sub">${kpi.forecast.refTotal ? growthTxt(kpi.forecast.value/kpi.forecast.refTotal-1, kpi.refLabel) : '요일별 평균 매출 기반 추정'}</div></div>
+        ${kpi.forecast.target>0 ? `<div class="card"><div class="label">기간 목표(월 목표 합)</div><div class="value">${fmtWon(kpi.forecast.target)}</div></div>
+        <div class="card gauge-card">${gaugeSVG(kpi.forecast.value/kpi.forecast.target)}<div><div class="label">목표 달성률(예상)</div><div class="value" style="font-size:1.3rem;color:${kpi.forecast.value>=kpi.forecast.target?'var(--rise)':'var(--negative)'}">${fmtPct(kpi.forecast.value/kpi.forecast.target)}</div></div></div>` : ''}
+        <div class="card"><div class="label">${kpi.refPeriodLabel} 매출(전체)</div><div class="value">${kpi.forecast.refTotal ? fmtWon(kpi.forecast.refTotal) : '-'}</div></div>
+      </div>
+      <p class="note">남은 ${kpi.forecast.remainingDays}일은 분석 기간의 요일별(공휴일은 일요일 기준) 평균 매출로 추정했습니다.</p>
+    `) : ''}
+
+    ${block('MONTHLY', '월별 추이', `
+      <div class="chart-legend">
+        <span><i style="background:#E4002B"></i>${kpi.periodTitle.length>14 ? '분석 기간' : '분석 기간 매출'}</span>
+        ${kpi.hasPrevYear ? `<span><i style="background:#B9B9BF"></i>${kpi.refLabel} (같은 날짜)</span>` : ''}
+      </div>
+      <div class="tablewrap" style="padding:16px 20px;margin-bottom:16px">${periodMonthlyChartSVG(kpi.monthly, kpi.refLabel, kpi.hasPrevYear)}</div>
+      ${periodMonthlyTable(raw)}
+      ${kpi.hasPrevYear ? `<p class="note">${kpi.refLabel}비는 비교 파일에 있는 날짜 중 분석 기간과 같은 날짜끼리만 비교한 값입니다. (월 매출은 해당 월 전체, ${kpi.refLabel} 매출은 비교 가능한 날짜 합계)</p>` : ''}
+      ${kpi.hasPlan ? '<p class="note">월 목표 달성률은 해당 월이 모두 반영된 경우에만 표시합니다.</p>' : ''}
+    `)}
+
+    ${block('TREND', '매출 흐름', `<div class="tablewrap" style="padding:16px 20px">${periodTrendChartSVG(kpi.daily, kpi.hasPrevYear)}</div>`)}
+
+    ${block('TRAFFIC', '조수 · 조단가 / 채널별 매출', `
+      <div class="two-col" style="grid-template-columns:1fr 1.4fr">
+        <div>
+          <div class="subgroup">
+            <div class="subgroup-label">분석 기간</div>
+            <div class="cards" style="grid-template-columns:repeat(2,1fr)">
+              <div class="card"><div class="label">일평균 조수</div><div class="value">${fmtNum(kpi.avgHeadcount)}<span style="font-size:.9rem;color:var(--text-mute)">명</span></div>
+                ${kpi.lastYearTraffic? `<div class="sub">${kpi.refLabel}비 <span class="${diffClass(kpi.avgHeadcount-kpi.lastYearTraffic.avgHeadcount)}">${fmtDiff(kpi.avgHeadcount-kpi.lastYearTraffic.avgHeadcount,'명')}</span></div>` : ''}</div>
+              <div class="card"><div class="label">조단가</div><div class="value">${fmtWon(kpi.avgHeadcost)}</div>
+                ${kpi.lastYearTraffic? `<div class="sub">${kpi.refLabel}비 <span class="${diffClass(kpi.avgHeadcost-kpi.lastYearTraffic.headcost)}">${fmtDiff(kpi.avgHeadcost-kpi.lastYearTraffic.headcost,'원')}</span></div>` : ''}</div>
+            </div>
+          </div>
+          <div class="subgroup">
+            <div class="subgroup-label">${kpi.refLabel}</div>
+            <div class="cards" style="grid-template-columns:repeat(2,1fr)">
+              <div class="card"><div class="label">조수</div><div class="value">${kpi.lastYearTraffic? fmtNum(kpi.lastYearTraffic.avgHeadcount) : '-'}${kpi.lastYearTraffic?'<span style="font-size:.9rem;color:var(--text-mute)">명</span>':''}</div>${kpi.lastYearTraffic?'':`<div class="sub">${kpi.refLabel} 파일 필요</div>`}</div>
+              <div class="card"><div class="label">조단가</div><div class="value">${kpi.lastYearTraffic? fmtWon(kpi.lastYearTraffic.headcost) : '-'}</div>${kpi.lastYearTraffic?'':`<div class="sub">${kpi.refLabel} 파일 필요</div>`}</div>
+            </div>
+          </div>
+        </div>
+        <div class="chan-grid">
+          ${channelCard('POS', kpi.posTotal, channelTotal, '#E4002B', kpi.hasRefChannel ? kpi.refPosTotal : null, kpi.hasRefChannel ? refChannelTotal : null, kpi.posTotalForCompare, channelTotalForCompare)}
+          ${channelCard('KIOSK', kpi.kioskTotal, channelTotal, '#E4002B', kpi.hasRefChannel ? kpi.refKioskTotal : null, kpi.hasRefChannel ? refChannelTotal : null, kpi.kioskTotalForCompare, channelTotalForCompare)}
+          ${kpi.isDtStore ? channelCard('DT', kpi.dtTotal, channelTotal, '#E4002B', kpi.hasRefChannel ? kpi.refDtTotal : null, kpi.hasRefChannel ? refChannelTotal : null, kpi.dtTotalForCompare, channelTotalForCompare) : ''}
+          ${channelCard('배달', kpi.deliveryTotal, kpi.cumNet, '#0E9F5A', kpi.hasPrevYear ? kpi.refDeliveryTotal : null, kpi.hasPrevYear ? kpi.cumLastYear : null, kpi.deliveryTotalForCompare, kpi.cumNetForCompare)}
+          ${kpi.hasPos ? channelCard('멤버십카드', kpi.memberTotal, kpi.cumNet, '#7C3AED', kpi.hasRefMember ? kpi.refMemberTotal : null, kpi.hasRefMember ? kpi.cumLastYear : null, kpi.memberTotalForCompare, kpi.cumNetForCompare) : ''}
+        </div>
+      </div>
+      ${kpi.hasPos ? '' : '<p class="note">결제수단별승인내역 파일이 없어 POS·KIOSK·DT 채널 구분과 멤버십카드 매출은 0으로 표시됩니다.</p>'}
+      ${kpi.hasRefChannel ? '' : '<p class="note">결제수단별승인내역 (비교 기간) 파일이 없거나 같은 날짜 데이터가 없어 POS·KIOSK·DT·멤버십카드는 비교 증감을 표시하지 않습니다.</p>'}
+    `)}
+
+    ${block('CALENDAR', '평일 · 주말 / 요일별 일평균', `
+      <div class="subgroup">
+        <div class="subgroup-label">분석 기간</div>
+        <div class="dow-grid">
+          ${dowCard('평일 (월~금, 공휴일 제외)', kpi.weekdayStats, kpi.lastYearTraffic ? kpi.lastYearTraffic.weekdayStats : null)}
+          ${dowCard('주말 (토·일 + 공휴일)', kpi.weekendStats, kpi.lastYearTraffic ? kpi.lastYearTraffic.weekendStats : null)}
+        </div>
+      </div>
+      ${periodDowTable(kpi)}
+    `)}
+
+    ${block('CATEGORY', '카테고리별 매출 — 대분류', kpi.hasProd ? `
+      ${catTable(kpi.midList, kpi.midTotal, false, true)}
+      <p class="note" style="font-size:.95rem;color:var(--info);font-weight:700">💡 대분류를 클릭하면 소분류·상품별 상세 내역이 표시됩니다.</p>
+      <div id="midDetailPanel" style="display:none"></div>
+    ` : emptyProd)}
+    ${block('CATEGORY', '카테고리별 매출 — 소분류', kpi.hasProd ? catTable(kpi.subList, kpi.subTotal, true) : emptyProd)}
+
+    ${(kpi.hasProd && kpi.hasProdLY) ? block('INSIGHT', `${kpi.refLabel} 대비 성장 · 부진 TOP 5`, insightBlock(kpi)) : ''}
+
+    ${block('FEATURED', '주요상품 실적', kpi.hasProd ? featuredProductBlock(kpi) : emptyProd)}
+
+    ${(kpi.hasProd && kpi.milldoProductList && kpi.milldoProductList.length>0) ? block('MILLDO', '', milldoBlock(kpi)) : ''}
+
+    ${block('NEWMENU', '신메뉴 실적', kpi.hasProd ? newMenuBlock(kpi) : emptyProd)}
+
+
+    ${block('RANKING', '상품 판매 TOP 20', kpi.hasProd ? `
+      <div class="search-box">
+        <span class="search-input-wrap"><input type="text" id="productSearchInput" placeholder="상품명으로 검색 (예: 아메리카노)"></span>
+        <span id="productSearchCount" class="search-count"></span>
+      </div>
+      <div id="productSearchResult"></div>
+      <div id="productTop20Wrap">${productTable(kpi.productTop20, kpi.prodTotalQty, kpi.prodTotalNet)}</div>
+    ` : emptyProd)}
+    ${block('WASTE', '폐기 현황', wasteBlock(kpi))}
+  `;
 }
 
 /* ============================================================
@@ -3011,7 +3860,7 @@ async function saveDashboardPrompt(){
     return;
   }
   const today = new Date().toISOString().slice(0,10);
-  const defaultName = `${CURRENT_KPI.storeName} ${CURRENT_KPI.MONTH}월 (${today})`;
+  const defaultName = `${CURRENT_KPI.storeName} ${CURRENT_KPI.isPeriod ? CURRENT_KPI.periodTitle : CURRENT_KPI.MONTH+'월'} (${today})`;
   const name = prompt('저장할 이름을 입력하세요', defaultName);
   if(!name || !name.trim()) return;
   const filesData = {};
@@ -3135,6 +3984,13 @@ loadLikeCount();
       맨 위에 새 날짜 항목을 추가해주세요. 오래된 항목도 계속 남겨둡니다.
    ============================================================ */
 const CHANGELOG = [
+  { date: '2026-10-26', items: [
+    '기간 분석: 금액 보기 전환(기간 누계 / 월평균)',
+    '의견 게시판: 내 의견에 새 답글이 달리면 재접속 시 팝업 알림(작성한 브라우저 기준)',
+    '분기·반기·연간 등 기간 단위 분석 추가(2개월 이상 데이터 업로드 시 자동 전환)',
+    '기간 분석: 월별 추이·전년동기/직전 기간 비교(같은 날짜끼리)·채널·카테고리·상품 TOP20',
+    '기간 분석: 예상 실적·주요상품·신메뉴·폐기 현황·Excel 저장 추가',
+  ]},
   { date: '2026-10-06', items: [
     '업로드 파일 변경: POS별매출조회 → 결제수단별승인내역(당월/비교기간)',
     '멤버십카드 매출액·매출비중 분석 추가',
@@ -3396,11 +4252,57 @@ async function submitIdeaReply(parentId){
       body: JSON.stringify({ action:'add', text, date:dateStr, image:'', parentId }),
     });
     if(!res.ok) throw new Error('등록 실패 HTTP '+res.status);
+    rememberMyIdea(dateStr, text);
     await loadIdeaBoard();
   }catch(e){
     console.error('[아이디어 게시판] 답글 등록 실패', e);
     alert('답글 등록 중 문제가 발생했어요.\n\n오류 내용: ' + e.message);
   }
+}
+
+/* ---------- 내 의견에 새 답글 알림 (이 브라우저 기준) ----------
+   게시판에는 로그인이 없어서, 이 브라우저에서 작성한 글(작성 시각+내용)을 localStorage에 기억해 두었다가
+   다음에 접속했을 때 그 글에 새 답글이 달렸으면 팝업으로 알려줍니다. */
+const MY_IDEAS_KEY = 'pb_my_ideas_v1', SEEN_REPLIES_KEY = 'pb_seen_replies_v1';
+function lsGetJSON(k, d){ try{ const v = JSON.parse(localStorage.getItem(k)); return v==null ? d : v; }catch(e){ return d; } }
+function lsSetJSON(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function rememberMyIdea(date, text){
+  const list = lsGetJSON(MY_IDEAS_KEY, []);
+  list.push({ date, text: String(text||'').slice(0,200) });
+  lsSetJSON(MY_IDEAS_KEY, list.slice(-200));
+}
+function checkNewRepliesToMine(notes){
+  const mine = lsGetJSON(MY_IDEAS_KEY, []);
+  if(!mine.length || !notes.length) return;
+  const key = n => n.date + '||' + String(n.text||'').slice(0,200);
+  const mineKeys = new Set(mine.map(m=>m.date + '||' + m.text));
+  const myIds = new Set();
+  notes.forEach(n=>{ if(n.id && mineKeys.has(key(n))) myIds.add(String(n.id)); });
+  if(!myIds.size) return;
+  const seen = new Set(lsGetJSON(SEEN_REPLIES_KEY, []).map(String));
+  const fresh = notes.filter(n=> n.id && n.parentId && myIds.has(String(n.parentId)) && !mineKeys.has(key(n)) && !seen.has(String(n.id)));
+  if(!fresh.length) return;
+  showReplyNotice(fresh, notes);
+}
+function showReplyNotice(fresh, notes){
+  const old = document.getElementById('replyNotice'); if(old) old.remove();
+  const byId = new Map(notes.map(n=>[String(n.id), n]));
+  const items = fresh.slice(0,5).map(n=>{
+    const p = byId.get(String(n.parentId));
+    return `<div class="rn-item"><div class="rn-orig">내 의견: ${escapeIdea(String((p&&p.text)||'').slice(0,40))}${p&&String(p.text).length>40?'…':''}</div><div class="rn-reply">↳ ${escapeIdea(n.text)}</div></div>`;
+  }).join('');
+  const el = document.createElement('div');
+  el.id = 'replyNotice'; el.className = 'reply-notice';
+  el.innerHTML = `<div class="rn-box"><div class="rn-title">💬 내 의견에 새 답글이 ${fresh.length}건 달렸어요</div>${items}${fresh.length>5?`<div class="rn-more">외 ${fresh.length-5}건</div>`:''}
+    <div class="rn-actions"><button class="btn small" id="rnOk">확인</button></div></div>`;
+  document.body.appendChild(el);
+  document.getElementById('rnOk').onclick = ()=>{
+    const seen = lsGetJSON(SEEN_REPLIES_KEY, []);
+    fresh.forEach(n=>seen.push(String(n.id)));
+    lsSetJSON(SEEN_REPLIES_KEY, seen.slice(-500));
+    el.remove();
+    const box = document.getElementById('ideaList'); if(box) box.scrollIntoView({behavior:'smooth', block:'center'});
+  };
 }
 async function loadIdeaBoard(){
   const listEl = document.getElementById('ideaList');
@@ -3413,6 +4315,7 @@ async function loadIdeaBoard(){
     if(!res.ok) throw new Error('HTTP '+res.status);
     const data = await res.json();
     renderIdeaList(data.notes||[]);
+    checkNewRepliesToMine(data.notes||[]);
   }catch(e){
     console.warn('[아이디어 게시판] 불러오기 실패', e);
     listEl.innerHTML = `<div class="empty-hint">게시판을 불러오지 못했습니다. (${escapeIdea(e.message)})</div>`;
@@ -3438,6 +4341,7 @@ async function submitIdea(){
       body: JSON.stringify({ action:'add', text, date:dateStr, image: ideaImageDataUrl || '', parentId: '' }),
     });
     if(!res.ok) throw new Error('등록 실패 HTTP '+res.status);
+    rememberMyIdea(dateStr, text);
     input.value = '';
     removeIdeaImage();
     await loadIdeaBoard();
@@ -3489,11 +4393,11 @@ function downloadBlob(blob, filename){
 
 function exportHTML(){
   if(!CURRENT_KPI) return;
-  const name = promptFilename(`${CURRENT_KPI.storeName}_${CURRENT_KPI.MONTH}월_대시보드`);
+  const name = promptFilename(`${CURRENT_KPI.storeName}_${CURRENT_KPI.isPeriod ? CURRENT_KPI.periodTitle.replace(/[ ()]/g,'') : CURRENT_KPI.MONTH+'월'}_대시보드`);
   if(!name) return;
   try{
     let fullHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
-    const kpiJson = JSON.stringify(CURRENT_KPI).replace(/<\/script/gi, '<\\/script');
+    const kpiJson = JSON.stringify(CURRENT_KPI.isPeriod ? PERIOD_RAW : CURRENT_KPI).replace(/<\/script/gi, '<\\/script');
     const dataScript = `<script>window.__PRELOADED_KPI__ = ${kpiJson};<\/script>\n`;
     fullHtml = fullHtml.replace('<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx', dataScript + '<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx');
     const blob = new Blob([fullHtml], {type:'text/html;charset=utf-8'});
@@ -3506,7 +4410,7 @@ function exportHTML(){
 
 async function exportPDF(evt){
   if(!CURRENT_KPI) return;
-  const name = promptFilename(`${CURRENT_KPI.storeName}_${CURRENT_KPI.MONTH}월_대시보드`);
+  const name = promptFilename(`${CURRENT_KPI.storeName}_${CURRENT_KPI.isPeriod ? CURRENT_KPI.periodTitle.replace(/[ ()]/g,'') : CURRENT_KPI.MONTH+'월'}_대시보드`);
   if(!name) return;
   const btn = evt && evt.target;
   const prevText = btn ? btn.textContent : null;
@@ -3550,13 +4454,13 @@ async function exportPDF(evt){
 
 async function exportExcel(evt){
   if(!CURRENT_KPI) return;
-  const name = promptFilename(`${CURRENT_KPI.storeName}_${CURRENT_KPI.MONTH}월_대시보드`);
+  const name = promptFilename(`${CURRENT_KPI.storeName}_${CURRENT_KPI.isPeriod ? CURRENT_KPI.periodTitle.replace(/[ ()]/g,'') : CURRENT_KPI.MONTH+'월'}_대시보드`);
   if(!name) return;
   const btn = evt && evt.target;
   const prevText = btn ? btn.textContent : null;
   if(btn){ btn.disabled = true; btn.textContent = 'Excel 생성 중...'; }
   try{
-    const blob = await buildExcelBlob(CURRENT_KPI);
+    const blob = CURRENT_KPI.isPeriod ? await buildPeriodExcelBlob(PERIOD_RAW) : await buildExcelBlob(CURRENT_KPI);
     downloadBlob(blob, name.toLowerCase().endsWith('.xlsx') ? name : name + '.xlsx');
   }catch(err){
     console.error(err);
@@ -3564,6 +4468,120 @@ async function exportExcel(evt){
   }finally{
     if(btn){ btn.disabled = false; btn.textContent = prevText; }
   }
+}
+
+/* ---------- 기간 분석 Excel ---------- */
+async function buildPeriodExcelBlob(kpi){
+  const wb = new ExcelJS.Workbook();
+  const RED = {type:'pattern', pattern:'solid', fgColor:{argb:'FFE4002B'}};
+  const NAVY = {type:'pattern', pattern:'solid', fgColor:{argb:'FF1E3A8A'}};
+  const GRAY = {type:'pattern', pattern:'solid', fgColor:{argb:'FFF2F2F3'}};
+  const WB = {bold:true, color:{argb:'FFFFFFFF'}};
+  const thin = {style:'thin', color:{argb:'FFE0E0E0'}};
+  const border = {top:thin,bottom:thin,left:thin,right:thin};
+  const WON = '#,##0', PCT = '0.0%';
+  // cols: [{h, k(row)=>value, fmt, w}]
+  function sheet(name, title, cols, rows, footer){
+    const ws = wb.addWorksheet(name, { views:[{showGridLines:false}] });
+    ws.getColumn(1).width = 2.5;
+    cols.forEach((c,i)=>{ ws.getColumn(2+i).width = c.w || 14; });
+    ws.mergeCells(2,2,2,Math.max(2,1+cols.length));
+    const t = ws.getCell(2,2); t.value = title; t.fill = RED; t.font = WB; t.alignment = {vertical:'middle', horizontal:'left'};
+    ws.getRow(2).height = 22;
+    cols.forEach((c,i)=>{ const h = ws.getCell(4,2+i); h.value = c.h; h.fill = NAVY; h.font = WB; h.border = border; h.alignment = {vertical:'middle', horizontal:'center', wrapText:true}; });
+    let r = 5;
+    rows.forEach(row=>{
+      cols.forEach((c,i)=>{ const cell = ws.getCell(r,2+i); const v = c.k(row); cell.value = (v===undefined||v===null||(typeof v==='number'&&!isFinite(v))) ? null : v;
+        if(c.fmt) cell.numFmt = c.fmt; cell.border = border; cell.alignment = {vertical:'middle', horizontal: c.left?'left':(typeof v==='number'?'right':'center')}; });
+      r++;
+    });
+    if(footer){
+      cols.forEach((c,i)=>{ const cell = ws.getCell(r,2+i); const v = footer[i]; cell.value = (v===undefined||v===null) ? null : v; cell.fill = GRAY; cell.font = {bold:true}; cell.border = border;
+        if(c.fmt && typeof v==='number') cell.numFmt = c.fmt; cell.alignment = {horizontal: typeof v==='number'?'right':'center'}; });
+    }
+    ws.views = [{showGridLines:false, state:'frozen', ySplit:4}];
+    return ws;
+  }
+  const L = kpi.refLabel;
+  const g = (a,b)=> b>0 ? a/b-1 : null;
+
+  // 1. 요약
+  const sum = [
+    ['분석 기간', `${kpi.startLabel} ~ ${kpi.endLabel} (${kpi.periodTitle})`],
+    ['영업일', kpi.salesDays],
+    ['기간 누계 매출', kpi.cumNet],
+    [`월평균 매출 (${kpi.effMonths.toFixed(1)}개월 환산)`, kpi.cumNet/kpi.effMonths],
+    ['일평균 매출', kpi.avgDailyNet],
+    ['비교 기간', kpi.hasPrevYear ? `${L} (${kpi.refRangeLabel}, 같은 날짜 ${kpi.cmpDays}일)` : '없음'],
+    [`${kpi.refPeriodLabel} 매출`, kpi.hasPrevYear ? kpi.cumLastYear : null],
+    [`${L}비 증감률`, kpi.hasPrevYear ? g(kpi.cumNetForCompare, kpi.cumLastYear) : null],
+    ['일평균 조수', kpi.avgHeadcount],
+    ['조단가', kpi.avgHeadcost],
+    ['최고 매출일', kpi.bestDay ? `${kpi.bestDay.dateStr} · ${Math.round(kpi.bestDay.net).toLocaleString('ko-KR')}원` : ''],
+    ['최저 매출일(영업일 기준)', kpi.worstDay ? `${kpi.worstDay.dateStr} · ${Math.round(kpi.worstDay.net).toLocaleString('ko-KR')}원` : ''],
+  ];
+  if(kpi.hasPlan && kpi.periodTarget>0){ sum.push(['기간 목표(완료된 월)', kpi.periodTarget]); sum.push(['목표 달성률(완료된 월)', kpi.periodTargetActual/kpi.periodTarget]); }
+  if(kpi.forecast){ sum.push(['예상 매출(마지막 달 말일까지)', kpi.forecast.value]); if(kpi.forecast.refTotal) sum.push([`예상 ${L}비`, kpi.forecast.value/kpi.forecast.refTotal-1]); }
+  const fmtFor = lbl => /률|비 증감/.test(lbl) || /예상 .*비$/.test(lbl) ? PCT : WON;
+  sheet('요약', `${kpi.storeName} · ${kpi.periodTitle} 실적 요약`, [
+    {h:'항목', k:r=>r[0], w:30, left:true}, {h:'값', k:r=>r[1], w:46, fmt:null}], sum);
+  const wsS = wb.getWorksheet('요약');
+  sum.forEach((r,i)=>{ if(typeof r[1]==='number') wsS.getCell(5+i,3).numFmt = fmtFor(r[0]); });
+
+  // 2. 월별
+  sheet('월별', '월별 실적', [
+    {h:'월', k:m=>`${m.year}-${String(m.month).padStart(2,'0')}${m.complete?'':' (일부)'}`, w:16},
+    {h:'영업일', k:m=>m.days, fmt:WON}, {h:'매출', k:m=>m.net, fmt:WON, w:16}, {h:'일평균', k:m=>m.avgNet, fmt:WON, w:16},
+    {h:`${L} 매출(같은 날짜)`, k:m=>m.hasRef?m.refNet:null, fmt:WON, w:18}, {h:`${L}비`, k:m=>m.growth, fmt:PCT},
+    {h:'월 목표', k:m=>m.target>0?m.target:null, fmt:WON, w:16}, {h:'달성률', k:m=>m.achieve, fmt:PCT},
+    {h:'조수', k:m=>m.headcount, fmt:WON}, {h:'조단가', k:m=>m.headcost, fmt:WON}], kpi.monthly,
+    ['합계', kpi.salesDays, kpi.cumNet, kpi.avgDailyNet, kpi.hasPrevYear?kpi.cumLastYear:null, g(kpi.cumNetForCompare,kpi.cumLastYear), kpi.periodTarget||null, kpi.periodTarget>0?kpi.periodTargetActual/kpi.periodTarget:null, kpi.cumHeadcount, kpi.avgHeadcost]);
+
+  // 3. 일별
+  sheet('일별', '일별 매출', [
+    {h:'일자', k:d=>d.dateStr, w:14}, {h:'요일', k:d=>['월','화','수','목','금','토','일'][d.dow-1]+(d.isHoliday?'(공휴일)':'')},
+    {h:'매출', k:d=>d.net, fmt:WON, w:16}, {h:`${L} 매출`, k:d=>d.refNet, fmt:WON, w:16},
+    {h:`${L}비`, k:d=>(d.refNet>0 ? d.net/d.refNet-1 : null), fmt:PCT}, {h:'조수', k:d=>d.headcount, fmt:WON}, {h:'조단가', k:d=>d.headcost, fmt:WON}], kpi.daily);
+
+  // 4. 채널
+  const chTot = kpi.posTotal+kpi.kioskTotal+kpi.dtTotal;
+  const chRows = [
+    ['POS', kpi.posTotal, chTot, kpi.refPosTotal, kpi.posTotalForCompare, kpi.hasRefChannel],
+    ['KIOSK', kpi.kioskTotal, chTot, kpi.refKioskTotal, kpi.kioskTotalForCompare, kpi.hasRefChannel],
+    ...(kpi.isDtStore ? [['DT', kpi.dtTotal, chTot, kpi.refDtTotal, kpi.dtTotalForCompare, kpi.hasRefChannel]] : []),
+    ['배달', kpi.deliveryTotal, kpi.cumNet, kpi.refDeliveryTotal, kpi.deliveryTotalForCompare, kpi.hasPrevYear],
+    ['멤버십카드', kpi.memberTotal, kpi.cumNet, kpi.refMemberTotal, kpi.memberTotalForCompare, kpi.hasRefMember],
+  ];
+  sheet('채널', '채널별 매출 (POS·KIOSK·DT 비중은 세 채널 합계 기준, 배달·멤버십카드는 전체 매출 기준)', [
+    {h:'채널', k:r=>r[0], w:14}, {h:'매출', k:r=>r[1], fmt:WON, w:16}, {h:'비중', k:r=>r[2]>0?r[1]/r[2]:null, fmt:PCT},
+    {h:`${L} 매출`, k:r=>r[5]?r[3]:null, fmt:WON, w:16}, {h:`${L}비 매출`, k:r=>r[5]?g(r[4], r[3]):null, fmt:PCT}], chRows);
+
+  // 5. 요일
+  sheet('요일별', '요일별 일평균 매출', [
+    {h:'요일', k:r=>r.n}, {h:'영업일', k:r=>r.c, fmt:WON}, {h:'일평균 매출', k:r=>r.a, fmt:WON, w:16},
+    {h:`${L} 일평균`, k:r=>r.ra, fmt:WON, w:16}, {h:`${L}비`, k:r=>(r.ra>0&&r.a>0)?r.a/r.ra-1:null, fmt:PCT}],
+    ['월','화','수','목','금','토','일'].map((n,i)=>({n:n+'요일', c:kpi.dowCur[i].n, a:kpi.dowCur[i].avg, ra:kpi.dowRef?kpi.dowRef[i].avg:null})));
+
+  // 6. 카테고리
+  if(kpi.hasProd){
+    const catCols = (label)=>[{h:label, k:r=>r.name, w:24, left:true}, {h:'수량', k:r=>r.qty, fmt:WON}, {h:'매출(VAT 별도)', k:r=>r.net, fmt:WON, w:16}, {h:'비중', k:r=>r.share, fmt:PCT},
+      {h:'성장률', k:r=>(r.lyNet>0?r.net/r.lyNet-1:null), fmt:PCT}, {h:`${L} 수량`, k:r=>r.lyQty, fmt:WON}, {h:`${L} 매출`, k:r=>r.lyNet, fmt:WON, w:16}, {h:`${L} 비중`, k:r=>r.lyShare, fmt:PCT}];
+    sheet('대분류', '카테고리별 매출 — 대분류', catCols('대분류'), kpi.midList, ['합계', kpi.midList.reduce((s,x)=>s+x.qty,0), kpi.midTotal]);
+    sheet('소분류', '카테고리별 매출 — 소분류', catCols('소분류'), kpi.subList, ['합계', kpi.subList.reduce((s,x)=>s+x.qty,0), kpi.subTotal]);
+    sheet('상품순위', `상품 판매 전체 순위 (총 ${kpi.productAll.length}개)`, [{h:'순위', k:r=>r.rank}, {h:'상품명', k:r=>r.name, w:34, left:true}, {h:'판매수량', k:r=>r.qty, fmt:WON}, {h:'매출(VAT 별도)', k:r=>r.net, fmt:WON, w:16}, {h:'비중', k:r=>r.share, fmt:PCT},
+      {h:'성장률', k:r=>(r.lyNet>0?r.net/r.lyNet-1:null), fmt:PCT}, {h:`${L} 수량`, k:r=>r.lyQty, fmt:WON}, {h:`${L} 매출`, k:r=>r.lyNet, fmt:WON, w:16}], kpi.productAll);
+    const fcols = [{h:'상품', k:r=>r.name, w:26, left:true}, {h:'수량', k:r=>r.qty, fmt:WON}, {h:'매출(VAT 별도)', k:r=>r.net, fmt:WON, w:16}, {h:'비중', k:r=>r.share, fmt:PCT}, {h:'일평균 수량', k:r=>r.avgDailyQty, fmt:'0.0'}];
+    sheet('주요상품', '주요상품 실적', fcols, kpi.featuredProductStats || []);
+    sheet('신메뉴', '신메뉴 실적', fcols, kpi.newMenuStats || []);
+  }
+
+  // 7. 폐기
+  if(kpi.hasWaste && kpi.wasteAll && kpi.wasteAll.length){
+    sheet('폐기현황', `폐기 전체 순위 (총 ${kpi.wasteAll.length}개) · 폐기수량 ${Math.round(kpi.wasteTotalQty).toLocaleString('ko-KR')} · 폐기금액 ${Math.round(kpi.wasteTotalAmt).toLocaleString('ko-KR')}원 · 폐기율 ${(kpi.wasteRate*100).toFixed(2)}%`,
+      [{h:'순위', k:r=>r.rank}, {h:'상품명', k:r=>r.name, w:30, left:true}, {h:'수량', k:r=>r.qty, fmt:WON}, {h:'단가', k:r=>r.unitPrice, fmt:WON}, {h:'폐기금액', k:r=>r.amt, fmt:WON, w:16}, {h:'폐기율', k:r=>r.rate, fmt:'0.00%'}, {h:'사유', k:r=>r.reason, w:20}, {h:'최근 폐기일', k:r=>r.date, w:14}], kpi.wasteAll);
+  }
+  const buf = await wb.xlsx.writeBuffer();
+  return new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
 
 async function buildExcelBlob(kpi){
