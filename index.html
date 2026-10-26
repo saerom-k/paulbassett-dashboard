@@ -4170,6 +4170,7 @@ function setIdeaImagePreview(dataUrl){
   else { img.src = ''; box.style.display = 'none'; }
 }
 function removeIdeaImage(){
+  ideaImageFullDataUrl = '';
   setIdeaImagePreview(null);
   const fileInput = document.getElementById('ideaImageInput');
   if(fileInput) fileInput.value = '';
@@ -4215,11 +4216,36 @@ function compressIdeaImageFile(file){
     reader.readAsDataURL(file);
   });
 }
+// 클릭 시 크게 보여줄 "원본에 가까운" 이미지(긴 변 1600px, JPEG 0.85). 시트 셀 한도와 무관하게
+// Apps Script가 구글 드라이브에 따로 저장합니다(미리보기용 작은 이미지는 기존대로 시트에 저장).
+function makeIdeaFullImage(file){
+  return new Promise((resolve)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>resolve('');
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>resolve('');
+      img.onload = ()=>{
+        let w = img.naturalWidth, h = img.naturalHeight; const maxDim = 1600;
+        if(w > maxDim || h > maxDim){ if(w >= h){ h = Math.round(h*maxDim/w); w = maxDim; } else { w = Math.round(w*maxDim/h); h = maxDim; } }
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        let q = 0.85, d = c.toDataURL('image/jpeg', q);
+        while(d.length > 2500000 && q > 0.4){ q -= 0.1; d = c.toDataURL('image/jpeg', q); }
+        resolve(d.length > 4000000 ? '' : d);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+let ideaImageFullDataUrl = '';
 async function handleIdeaImageFile(file){
   if(!file) return;
   if(!file.type || !file.type.startsWith('image/')){ alert('이미지 파일만 첨부할 수 있습니다.'); return; }
   try{
     const dataUrl = await compressIdeaImageFile(file);
+    ideaImageFullDataUrl = await makeIdeaFullImage(file);
     setIdeaImagePreview(dataUrl);
   }catch(e){
     alert(e.message || '사진을 처리하지 못했습니다.');
@@ -4247,10 +4273,13 @@ function escapeIdea(s){
 }
 // 시트에 저장된 image 값이 실제로 안전한 base64 이미지 data URL인지만 확인합니다
 // (시트를 직접 수정해서 이상한 값이 들어오는 경우를 방지하기 위한 최소한의 안전장치).
+function isIdeaFullSrc(s){
+  return typeof s === 'string' && /^https:\/\/drive\.google\.com\/thumbnail\?id=[A-Za-z0-9_-]+&sz=w\d+$/.test(s);
+}
 function isIdeaImageSrc(s){
   return typeof s === 'string' && /^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(s);
 }
-function openIdeaImage(src){
+function openIdeaImage(src, fullSrc){
   let overlay = document.getElementById('ideaImgLightbox');
   if(!overlay){
     overlay = document.createElement('div');
@@ -4263,8 +4292,15 @@ function openIdeaImage(src){
     overlay.appendChild(img);
     document.body.appendChild(overlay);
   }
-  document.getElementById('ideaImgLightboxImg').src = src;
+  const big = document.getElementById('ideaImgLightboxImg');
+  big.src = src;
   overlay.style.display = 'flex';
+  // 원본(드라이브)이 있으면 먼저 작은 이미지를 보여준 뒤, 다 불러오면 원본으로 교체합니다.
+  if(fullSrc && isIdeaFullSrc(fullSrc)){
+    const pre = new Image();
+    pre.onload = ()=>{ if(overlay.style.display !== 'none') big.src = fullSrc; };
+    pre.src = fullSrc;
+  }
 }
 function renderIdeaNote(n, i, isReply, repliesByParent){
   const replies = n.id ? (repliesByParent.get(String(n.id)) || []) : [];
@@ -4274,7 +4310,7 @@ function renderIdeaNote(n, i, isReply, repliesByParent){
         <div class="idea-text">${escapeIdea(n.text)}</div>
         <button class="idea-delete-btn" onclick="deleteIdea(${i})" title="삭제 (운영자 전용)">✕</button>
       </div>
-      ${isIdeaImageSrc(n.image) ? `<img class="idea-img" src="${n.image}" alt="첨부 사진" onclick="openIdeaImage('${n.image}')">` : ''}
+      ${isIdeaImageSrc(n.image) ? `<img class="idea-img" src="${n.image}" alt="첨부 사진" onclick="openIdeaImage('${n.image}', '${isIdeaFullSrc(n.imageFull) ? n.imageFull : ''}')">` : ''}
       <div class="idea-meta-row">
         <div class="idea-date">${escapeIdea(n.date)}</div>
         ${n.id ? `<button class="idea-reply-btn" onclick="toggleIdeaReplyBox('${n.id}')">답글</button>` : ''}
@@ -4344,18 +4380,18 @@ function toggleIdeaReplyBox(id){
 }
 
 // ---- 답글 사진 첨부(파일 선택 / Ctrl+V 붙여넣기) ----
-const replyImages = {};
+const replyImages = {}, replyImagesFull = {};
 function setReplyImagePreview(pid, dataUrl){
   if(dataUrl) replyImages[pid] = dataUrl; else delete replyImages[pid];
   const box = document.getElementById('replyPrev-'+pid), img = document.getElementById('replyPrevImg-'+pid);
   if(!box || !img) return;
   if(dataUrl){ img.src = dataUrl; box.style.display = 'flex'; } else { img.src = ''; box.style.display = 'none'; }
 }
-function removeReplyImage(pid){ setReplyImagePreview(pid, null); }
+function removeReplyImage(pid){ delete replyImagesFull[pid]; setReplyImagePreview(pid, null); }
 async function handleReplyImageFile(pid, file){
   if(!file) return;
   if(!file.type || !file.type.startsWith('image/')){ alert('이미지 파일만 첨부할 수 있습니다.'); return; }
-  try{ setReplyImagePreview(pid, await compressIdeaImageFile(file)); }
+  try{ const thumb = await compressIdeaImageFile(file); replyImagesFull[pid] = await makeIdeaFullImage(file); setReplyImagePreview(pid, thumb); }
   catch(e){ alert(e.message || '사진을 처리하지 못했습니다.'); }
 }
 document.addEventListener('paste', (e)=>{
@@ -4385,11 +4421,11 @@ async function submitIdeaReply(parentId){
   try{
     const res = await fetch(IDEA_APPS_SCRIPT_URL, {
       method:'POST', headers:{'Content-Type':'text/plain'},
-      body: JSON.stringify({ action:'add', text, date:dateStr, image, parentId }),
+      body: JSON.stringify({ action:'add', text, date:dateStr, image, imageFull: replyImagesFull[parentId] || '', parentId }),
     });
     if(!res.ok) throw new Error('등록 실패 HTTP '+res.status);
     rememberMyIdea(dateStr, text);
-    delete replyImages[parentId];
+    delete replyImages[parentId]; delete replyImagesFull[parentId];
     await loadIdeaBoard();
   }catch(e){
     console.error('[아이디어 게시판] 답글 등록 실패', e);
@@ -4475,7 +4511,7 @@ async function submitIdea(){
     // 서버(Apps Script) 쪽에서 그 내용을 그대로 JSON으로 해석하도록 합니다.
     const res = await fetch(IDEA_APPS_SCRIPT_URL, {
       method:'POST', headers:{'Content-Type':'text/plain'},
-      body: JSON.stringify({ action:'add', text, date:dateStr, image: ideaImageDataUrl || '', parentId: '' }),
+      body: JSON.stringify({ action:'add', text, date:dateStr, image: ideaImageDataUrl || '', imageFull: ideaImageFullDataUrl || '', parentId: '' }),
     });
     if(!res.ok) throw new Error('등록 실패 HTTP '+res.status);
     rememberMyIdea(dateStr, text);
