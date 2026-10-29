@@ -1303,6 +1303,88 @@ function findYearMonthBlock(aoa, year){
   }
   return null;
 }
+/* 기네스 월매출: 목표매출 파일의 매장별 과거 월 매출(전 연도 시트) 중 최고 기록 */
+function collectMonthlyHistory(targetWB, storeNorm, YEAR, MONTH, actuals12, lastYear12){
+  const map = {};   // 'YYYY-M' -> 매출
+  const put = (y,m,v)=>{ if(!(v>0)) return; if(y===YEAR && m>=MONTH) return; if(y>YEAR) return; const k = y+'-'+m; if(!map[k] || v>map[k]) map[k]=v; };
+  if(targetWB && storeNorm){
+    for(const sname of targetWB.sheetNames){
+      const aoa = targetWB.sheets[sname];
+      const nameCol = guessStoreNameCol(aoa);
+      if(nameCol<0) continue;
+      const storeRow = findStoreRowInSheet(aoa, nameCol, storeNorm);
+      if(storeRow<0) continue;
+      for(let y=2015; y<=YEAR; y++){
+        const info = findYearMonthBlock(aoa, y);
+        if(!info) continue;
+        info.block.forEach(({col,month})=>{ if(month>=1&&month<=12) put(y, month, num(aoa[storeRow][col])); });
+      }
+      const nm = str(sname);
+      const ym = nm.match(/(\d{2})\s*년/);
+      if(ym && (nm.includes('실적')||nm.includes('매출')) && !nm.includes('계획') && !nm.includes('목표')){
+        const info = findMonthBlocks(aoa);
+        if(info){
+          const cm = monthBlockToColMap(info.blocks[0]);
+          const y = 2000 + (+ym[1]);
+          cm.forEach((c,i)=>{ if(c!==null) put(y, i+1, num(aoa[storeRow][c])); });
+        }
+      }
+    }
+  }
+  (actuals12||[]).forEach((v,i)=>put(YEAR, i+1, v));
+  (lastYear12||[]).forEach((v,i)=>put(YEAR-1, i+1, v));
+  return Object.keys(map).map(k=>{ const [y,m]=k.split('-').map(Number); return {y, m, net:map[k]}; }).sort((a,b)=>b.net-a.net);
+}
+function computeGuinness(targetWB, storeNorm, YEAR, MONTH, DIM, DAY_CUTOFF, cumNet, forecast, actuals12, lastYear12){
+  const hist = collectMonthlyHistory(targetWB, storeNorm, YEAR, MONTH, actuals12, lastYear12);
+  if(!hist.length) return null;
+  const rec = hist[0];
+  const remainDays = Math.max(0, DIM - DAY_CUTOFF);
+  const needFromCum = rec.net - cumNet;                 // 누계 기준 남은 금액
+  const needBeyondFc = rec.net - forecast;              // 예상 실적 기준 추가 필요 금액
+  return {
+    recY: rec.y, recM: rec.m, recNet: rec.net, top: hist.slice(0,5),
+    cumNet, forecast, remainDays, dayCut: DAY_CUTOFF, dim: DIM,
+    needFromCum, needBeyondFc,
+    reqDaily: remainDays>0 ? Math.max(0, needFromCum)/remainDays : null,           // 남은 기간 필요 일평균
+    fcDaily: remainDays>0 ? Math.max(0, forecast-cumNet)/remainDays : null,        // 예상 실적상 남은 기간 일평균
+    addDaily: remainDays>0 ? Math.max(0, needBeyondFc)/remainDays : null,          // 예상 대비 추가로 더 필요한 일평균
+    curDaily: DAY_CUTOFF>0 ? cumNet/DAY_CUTOFF : 0,
+    status: cumNet >= rec.net ? 'done' : (forecast >= rec.net ? 'onTrack' : 'chase'),
+  };
+}
+function guinnessBlock(kpi){
+  const g = kpi.guinness;
+  if(!g) return `<div class="empty-hint">목표매출 파일에서 이 매장의 과거 월별 매출을 찾지 못해 기네스 월매출을 계산할 수 없습니다.</div>`;
+  const lbl = `${String(g.recY).slice(2)}년 ${g.recM}월`;
+  let verdict, vcls;
+  if(g.status==='done'){ verdict = `이미 기네스 갱신 (누계 ${fmtWon(g.cumNet - g.recNet)} 초과)`; vcls='pos'; }
+  else if(g.status==='onTrack'){ verdict = `현재 페이스면 갱신 가능 (예상 실적이 ${fmtWon(g.forecast-g.recNet)} 초과)`; vcls='pos'; }
+  else { verdict = `예상 실적 기준 ${fmtWon(g.needBeyondFc)} 더 필요`; vcls='neg'; }
+  const cards = `<div class="cards" style="margin-bottom:14px">
+    <div class="card"><div class="label">🏆 기네스 월매출</div><div class="value nowrap">${fmtWon(g.recNet)}</div><div class="sub">${lbl}</div></div>
+    <div class="card"><div class="label">${kpi.MONTH}월 누계 / 예상 실적</div><div class="value nowrap" style="font-size:1.1rem">${fmtWon(g.cumNet)}</div><div class="sub nowrap">예상 ${fmtWon(g.forecast)}</div></div>
+    <div class="card"><div class="label">갱신까지 이번달 추가 매출</div><div class="value nowrap ${g.needBeyondFc>0?'neg':'pos'}">${g.needBeyondFc>0 ? '+'+fmtWon(g.needBeyondFc) : '달성 가능'}</div><div class="sub">예상 실적 대비</div></div>
+    <div class="card"><div class="label">남은 ${g.remainDays}일 일평균 추가 매출</div><div class="value nowrap ${(g.addDaily||0)>0?'neg':'pos'}">${g.addDaily==null ? '-' : ((g.addDaily>0)?'+'+fmtWon(g.addDaily):'달성 가능')}</div><div class="sub">예상 일평균 ${g.fcDaily==null?'-':fmtWon(g.fcDaily)} 기준</div></div>
+  </div>`;
+  const rows = g.top.map((t,i)=>`<tr${i===0?' style="background:var(--accent-soft)"':''}><td><span class="rankbadge">${i+1}</span></td><td style="text-align:left">${t.y}년 ${t.m}월</td><td>${fmtWon(t.net)}</td><td>${i===0?'-':fmtSignedPct(t.net/g.recNet-1)}</td></tr>`).join('');
+  const detail = `<div class="tablewrap" style="margin-bottom:12px"><table class="dt">
+    <thead><tr><th style="text-align:left">구분</th><th>금액</th></tr></thead>
+    <tbody>
+      <tr><td style="text-align:left">기네스 월매출 (${lbl})</td><td>${fmtWon(g.recNet)}</td></tr>
+      <tr><td style="text-align:left">${kpi.MONTH}월 누계 매출 (${g.dayCut}일까지)</td><td>${fmtWon(g.cumNet)}</td></tr>
+      <tr><td style="text-align:left">기네스까지 남은 금액 (누계 기준)</td><td>${fmtWon(Math.max(0,g.needFromCum))}</td></tr>
+      <tr><td style="text-align:left">남은 ${g.remainDays}일 필요 일평균 (기네스 달성용)</td><td>${g.reqDaily==null?'-':fmtWon(g.reqDaily)}</td></tr>
+      <tr><td style="text-align:left">현재까지 일평균</td><td>${fmtWon(g.curDaily)}</td></tr>
+      <tr><td style="text-align:left">${kpi.MONTH}월 예상 실적</td><td>${fmtWon(g.forecast)}</td></tr>
+      <tr><td style="text-align:left"><b>예상 실적 대비 추가 필요 매출</b></td><td class="${vcls}"><b>${g.needBeyondFc>0?'+'+fmtWon(g.needBeyondFc):'0원 (갱신 가능)'}</b></td></tr>
+      <tr><td style="text-align:left"><b>남은 기간 일평균 추가 필요 매출</b></td><td class="${vcls}"><b>${g.addDaily==null?'-':(g.addDaily>0?'+'+fmtWon(g.addDaily):'0원 (갱신 가능)')}</b></td></tr>
+    </tbody></table></div>`;
+  const top = `<div class="subgroup-label">역대 월매출 TOP 5</div><div class="tablewrap"><table class="dt">
+    <thead><tr><th>순위</th><th style="text-align:left">연월</th><th>매출(VAT 별도)</th><th>기네스 대비</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<p class="note" style="margin:0 0 10px"><b class="${vcls}">${verdict}</b></p>` + cards + detail + top
+    + `<p class="note">※ 목표매출 파일의 매장별 과거 월 매출(전년도·과년도 시트)과 올해 실적 중 최고 월을 기준으로 합니다. 예상 실적은 요일별 평균 기반 월 전망치입니다.</p>`;
+}
 function computeStoreRanking(targetWB, storeNorm, YEAR, MONTH){
   // 최근 마감월(전월) 기준으로 전 매장 매출/전년비 순위를 계산합니다.
   // (당월은 다른 매장의 실적이 아직 채워지지 않은 경우가 많아, 비교 가능한 가장 최근 완료월을 사용)
@@ -2236,6 +2318,7 @@ async function computeAll(){
   const annualLastYearSum = monthlyLastYear12.reduce((s,v)=>s+v,0);
 
   const storeRanking = targetWB ? computeStoreRanking(targetWB, storeNorm, YEAR, MONTH) : null;
+  const guinness = (targetWB && storeLabel) ? computeGuinness(targetWB, storeNorm, YEAR, MONTH, DIM, DAY_CUTOFF, cumNet, forecast, monthlyActuals12, monthlyLastYear12) : null;
 
   return {
     YEAR, MONTH, DIM, DAY_CUTOFF,
@@ -2261,7 +2344,7 @@ async function computeAll(){
     refMode: REF_MODE, refLabel: REF_LABEL, refLabelFull: REF_LABEL_FULL, REF_YEAR, REF_MONTH,
     refPeriodLabel: REF_MODE==='YOY' ? '전년동기' : (REF_MODE==='MOM' ? '전월동기' : `${REF_LABEL_FULL} 동기`),
     refMonthLabel: REF_MODE==='YOY' ? '전년동월' : (REF_MODE==='MOM' ? '전월' : REF_LABEL_FULL),
-    dowStats, forecast, annual, annualTargetSum, annualActualSum, annualLastYearSum
+    dowStats, forecast, annual, annualTargetSum, annualActualSum, annualLastYearSum, guinness
   };
 }
 
@@ -2688,6 +2771,7 @@ function render(res){
 
     ${block('WASTE', '폐기 현황', wasteBlock(kpi))}
 
+    ${(kpi.hasTarget && !kpi.isPeriod) ? block('ANNUAL', '기네스 월매출 도전', guinnessBlock(kpi)) : ''}
     ${block('ANNUAL', '연간 월별 실적', `
       <div class="chart-legend">
         <span><i style="background:var(--surface-3);border:1px solid var(--border)"></i>목표</span>
@@ -3050,7 +3134,7 @@ function productTable(list, totalQty, totalNet){
   </table></div>`;
 }
 function wasteWeekdayTrendSVG(trend){
-  const W = 900, H = 220, padL = 46, padR = 16, padT = 16, padB = 30;
+  const W = 900, H = 232, padL = 46, padR = 16, padT = 28, padB = 30;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const maxVal = Math.max(...trend.map(d=>d.amt), 1);
   const n = trend.length;
@@ -3061,6 +3145,7 @@ function wasteWeekdayTrendSVG(trend){
     const h = (d.amt/maxVal) * plotH;
     const isWeekend = (d.label==='토' || d.label==='일');
     bars += `<rect x="${(gx-barW/2).toFixed(1)}" y="${(padT+plotH-h).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${isWeekend?'#1E3A8A':'var(--accent)'}"/>`;
+    bars += `<text x="${gx.toFixed(1)}" y="${(padT+plotH-h-6).toFixed(1)}" text-anchor="middle" font-size="12.5" font-weight="800" fill="var(--text)" font-family="Noto Sans KR">${(d.amt/10000).toFixed(1)}</text>`;
     bars += `<text x="${gx.toFixed(1)}" y="${H-10}" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text-mute)" font-family="Noto Sans KR">${d.label}</text>`;
   });
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;font-family:'Noto Sans KR'">
@@ -3076,7 +3161,7 @@ function wasteDailyTrendSVG(daily){
   const nice = (()=>{ const p = Math.pow(10, Math.floor(Math.log10(maxVal))); const f = maxVal/p; return (f<=1?1:f<=2?2:f<=5?5:10)*p; })();
   const slot = plotW / n, barW = Math.max(1.5, Math.min(26, slot * 0.7));
   const rot = slot < 26, fs = 8.5;
-  const fmtK = v => v>=10000 ? (Math.round(v/1000)/10)+'만' : fmtNum(Math.round(v));
+  const fmtK = v => (v/10000).toFixed(1);
   let grid = '', bars = '', labels = '';
   [0,0.5,1].forEach(t=>{
     const y = padT + plotH - plotH*t;
@@ -3096,10 +3181,12 @@ function wasteDailyTrendSVG(daily){
         : `<text x="${gx.toFixed(1)}" y="${padT+plotH+14}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="var(--text-mute)">${md}</text>`;
     }
   });
-  if(daily[maxIdx].amt > 0){
-    const gx = padL + (maxIdx+0.5)*slot, y = padT + plotH - (daily[maxIdx].amt/nice)*plotH;
-    labels += `<text x="${gx.toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="var(--text)">${fmtK(daily[maxIdx].amt)}</text>`;
-  }
+  daily.forEach((d,i)=>{
+    if(slot < 15 && i !== maxIdx) return;   // 막대가 매우 촘촘한 기간 보기에서는 최대값만 표시
+    if(!(d.amt>0)) return;
+    const gx = padL + (i+0.5)*slot, y = padT + plotH - (d.amt/nice)*plotH;
+    labels += `<text x="${gx.toFixed(1)}" y="${(y-4).toFixed(1)}" text-anchor="middle" font-size="${slot<15?11:8.5}" font-weight="800" fill="var(--text)">${fmtK(d.amt)}</text>`;
+  });
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;font-family:'Noto Sans KR'">${grid}${bars}${labels}</svg>`;
 }
 function wasteDailyBlock(kpi){
@@ -3123,7 +3210,7 @@ function wasteDailyBlock(kpi){
       ${rate!=null?`<span>기간 폐기율 <b>${fmtPct(rate,2)}</b></span>`:''}
       ${kpi.isAvgView?'<span>※ 일자별 실제 금액(월평균 환산 아님)</span>':''}
     </div>`;
-  return `<div class="subgroup-label" style="margin-top:20px">일자별 폐기 금액 추이</div>
+  return `<div class="subgroup-label" style="margin-top:20px">일자별 폐기 금액 추이 <span style="font-weight:600;color:var(--text-mute)">(단위: 만)</span></div>
     <div class="tablewrap" style="padding:16px 20px">${wasteDailyTrendSVG(dl)}${legend}</div>`;
 }
 function wasteBlock(kpi){
@@ -3151,7 +3238,7 @@ function wasteBlock(kpi){
   return summary + `
     <div class="subgroup-label">폐기 사유별 집계</div>
     ${reasonTable}
-    <div class="subgroup-label" style="margin-top:20px">요일별 폐기 금액 추이</div>
+    <div class="subgroup-label" style="margin-top:20px">요일별 폐기 금액 추이 <span style="font-weight:600;color:var(--text-mute)">(단위: 만)</span></div>
     ${trendChart}
     ${wasteDailyBlock(kpi)}
     <div class="subgroup-label" style="margin-top:20px">폐기 상위 TOP 20</div>
@@ -4354,7 +4441,6 @@ loadLikeCount();
 const CHANGELOG = [
   { date: '2026-10-29', items: [
     '상단/하단 탭 추가(매출·상품·폐기 등 구분, PC/모바일), 맨 위로 이동 버튼 추가',
-    '메뉴 정보 업데이트(C메뉴 기준): 신메뉴 실적 리스트 개편(너티 멜로우 시리즈·아이스크림 밀크티 카페라떼·흑임자 추가)',
   ]},
   { date: '2026-10-26', items: [
     '업로드 파일 변경: 결제수단별승인내역 → POS별매출조회(분석 기간/비교 기간) (채널별 매출)',
@@ -4363,16 +4449,23 @@ const CHANGELOG = [
     '업로드 칸 하나에 파일 여러 개 첨부 가능(월별 로우 데이터를 합쳐서 분석)',
     '의견 게시판: 내 의견에 새 답글이 달리면 재접속 시 팝업 알림(작성한 브라우저 기준)',
   ]},
+  { date: '2026-10-15', items: [
+    '신메뉴 리스트 업데이트 : 흑임자 2종',
+  ]},
   { date: '2026-10-06', items: [
     '업로드 파일 변경: POS별매출조회 → 결제수단별승인내역(당월/비교기간)',
     '멤버십카드 매출액·매출비중 분석 추가',
     'POS·KIOSK·DT/배달/멤버십카드 비교 기간 분석 추가(전년비·전월비·특정기간비)',
   ]},
   { date: '2026-09-29', items: [
+    '신메뉴 리스트 업데이트 : 아이스크림 밀크티 카페라떼',
     '비교 기간 자동 인식 기능 추가(전년/전월/특정 기간)',
   ]},
   { date: '2026-09-28', items: [
     'Excel 다운로드 파일 : 주요상품·신메뉴 실적 시트 추가',
+  ]},
+  { date: '2026-09-22', items: [
+    '신메뉴 리스트 업데이트 : 너티 멜로우 콜드브루 2종 및 에스프레소 메뉴',
   ]},
   { date: '2026-09-10', items: [
     '신메뉴 실적 리스트 : 유자 그릭요거트 시즌 출시 반영',
