@@ -2755,11 +2755,11 @@ function render(res){
     `)}
 
     ${block('CATEGORY', '카테고리별 매출 — 대분류', kpi.hasProd ? `
-      ${catTable(kpi.midList, kpi.midTotal, false, true)}
+      ${catSortBlock('mid', kpi)}
       <p class="note" style="font-size:.95rem;color:var(--info);font-weight:700">💡 대분류를 클릭하면 소분류·상품별 상세 내역이 표시됩니다.</p>
       <div id="midDetailPanel" style="display:none"></div>
     ` : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
-    ${block('CATEGORY', '카테고리별 매출 — 소분류', kpi.hasProd ? catTable(kpi.subList, kpi.subTotal, true) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
+    ${block('CATEGORY', '카테고리별 매출 — 소분류', kpi.hasProd ? catSortBlock('sub', kpi) : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
 
     ${(kpi.hasProd && kpi.hasProdLY) ? block('INSIGHT', `${kpi.refLabel} 대비 성장 · 부진 TOP 5`, insightBlock(kpi)) : ''}
 
@@ -2949,8 +2949,9 @@ function fitScrollBoxes(){
     box.style.maxHeight = Math.ceil(rb.bottom - tb.top + 8) + 'px';
   });
 }
-let SORT_STATE = { prod:{k:'net', d:'desc'}, waste:{k:'amt', d:'desc'} };
+let SORT_STATE = { prod:{k:'default', d:'desc'}, waste:{k:'default', d:'desc'}, mid:{k:'default', d:'desc'}, sub:{k:'default', d:'desc'} };
 function sortList(list, key, dir){
+  if(key==='default') return list.map(x=>Object.assign({}, x));   // 기본정렬: 원래 순서·순위 그대로
   const val = x => key==='growth' ? ((x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null) : x[key];
   const arr = list.slice().sort((a,b)=>{
     const va = val(a), vb = val(b);
@@ -2963,19 +2964,33 @@ function sortBarHtml(kind, opts){
   const cur = SORT_STATE[kind];
   return `<div class="sortbar"><span class="sortlabel">정렬</span>
     <select class="sort-k" data-sortfor="${kind}">${opts.map(o=>`<option value="${o[0]}"${cur.k===o[0]?' selected':''}>${o[1]}</option>`).join('')}</select>
-    <select class="sort-d" data-sortfor="${kind}"><option value="desc"${cur.d==='desc'?' selected':''}>높은순 (내림차순)</option><option value="asc"${cur.d==='asc'?' selected':''}>낮은순 (오름차순)</option></select></div>`;
+    <select class="sort-d" data-sortfor="${kind}"${cur.k==='default'?' disabled':''}><option value="desc"${cur.d==='desc'?' selected':''}>높은순 (내림차순)</option><option value="asc"${cur.d==='asc'?' selected':''}>낮은순 (오름차순)</option></select></div>`;
+}
+function catSortedTableHtml(kind, kpi){
+  const isSub = kind==='sub';
+  const list = isSub ? kpi.subList : kpi.midList, total = isSub ? kpi.subTotal : kpi.midTotal;
+  const st = SORT_STATE[kind];
+  const sorted = sortList(list, st.k, st.d);
+  return catTable(sorted, total, isSub, !isSub);
+}
+function catSortBlock(kind, kpi){
+  const list = kind==='sub' ? kpi.subList : kpi.midList;
+  const hasLY = (list||[]).some(x=>x.lyNet!=null);
+  const opts = [['default','기본정렬'],['net','매출액'],['qty','수량'],['share','비중']].concat(hasLY ? [['growth','성장률']] : []);
+  if(SORT_STATE[kind].k==='growth' && !hasLY) SORT_STATE[kind] = {k:'default', d:SORT_STATE[kind].d};
+  return sortBarHtml(kind, opts) + `<div id="catTbl-${kind}">${catSortedTableHtml(kind, kpi)}</div>`;
 }
 function prodRankTableHtml(kpi){
   const base = (kpi.productAll && kpi.productAll.length) ? kpi.productAll : (kpi.productTop20||[]);
   const hasLY = base.some(x=>x.lyNet!=null);
-  let st = SORT_STATE.prod; if(st.k==='growth' && !hasLY) st = SORT_STATE.prod = {k:'net', d:st.d};
+  let st = SORT_STATE.prod; if(st.k==='growth' && !hasLY) st = SORT_STATE.prod = {k:'default', d:st.d};
   const list = sortList(base, st.k, st.d);
   return wrapScroll(productTable(list, kpi.prodTotalQty, kpi.prodTotalNet), 20, list.length);
 }
 function prodRankingBlock(kpi){
   const base = (kpi.productAll && kpi.productAll.length) ? kpi.productAll : (kpi.productTop20||[]);
   const hasLY = base.some(x=>x.lyNet!=null);
-  const opts = [['net','매출액'],['qty','수량'],['share','비중']].concat(hasLY ? [['growth','성장률']] : []);
+  const opts = [['default','기본정렬'],['net','매출액'],['qty','수량'],['share','비중']].concat(hasLY ? [['growth','성장률']] : []);
   return sortBarHtml('prod', opts) + `<div id="prodRankTable">${prodRankTableHtml(kpi)}</div>`;
 }
 function wasteRankTableHtml(kpi){
@@ -3324,7 +3339,7 @@ function wasteBlock(kpi){
     <div class="card"><div class="label">폐기금액(VAT 별도)</div><div class="value nowrap">${fmtWon(kpi.wasteTotalAmt)}</div>${(kpi.isPeriod && !kpi.isAvgView) ? `<div class="sub nowrap">월평균 ${fmtWon(kpi.wasteTotalAmt/kpi.effMonths)}</div>` : ''}</div>
     <div class="card"><div class="label">폐기율</div><div class="value">${fmtPct(kpi.wasteRate, 2)}</div><div class="sub">폐기금액(VAT 별도) / ${kpi.isPeriod?'기간':'당월'} 누계 매출</div></div>
   </div>`;
-  const top20Table = sortBarHtml('waste', [['amt','폐기금액'],['qty','폐기수량']]) + `<div id="wasteRankTable">${wasteRankTableHtml(kpi)}</div>`;
+  const top20Table = sortBarHtml('waste', [['default','기본정렬'],['amt','폐기금액'],['qty','폐기수량']]) + `<div id="wasteRankTable">${wasteRankTableHtml(kpi)}</div>`;
 
   const reasonRows = (kpi.wasteReasonList||[]).map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.reason}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.amt)}</td><td>${fmtPct(x.share,1)}</td><td class="bar-cell" style="width:120px">${barCell(x.amt, kpi.wasteReasonList[0]?kpi.wasteReasonList[0].amt:0)}</td></tr>`).join('');
   const reasonTable = `<div class="tablewrap"><table class="dt">
@@ -4220,11 +4235,11 @@ function renderPeriod(raw){
     `)}
 
     ${block('CATEGORY', '카테고리별 매출 — 대분류', kpi.hasProd ? `
-      ${catTable(kpi.midList, kpi.midTotal, false, true)}
+      ${catSortBlock('mid', kpi)}
       <p class="note" style="font-size:.95rem;color:var(--info);font-weight:700">💡 대분류를 클릭하면 소분류·상품별 상세 내역이 표시됩니다.</p>
       <div id="midDetailPanel" style="display:none"></div>
     ` : emptyProd)}
-    ${block('CATEGORY', '카테고리별 매출 — 소분류', kpi.hasProd ? catTable(kpi.subList, kpi.subTotal, true) : emptyProd)}
+    ${block('CATEGORY', '카테고리별 매출 — 소분류', kpi.hasProd ? catSortBlock('sub', kpi) : emptyProd)}
 
     ${(kpi.hasProd && kpi.hasProdLY) ? block('INSIGHT', `${kpi.refLabel} 대비 성장 · 부진 TOP 5`, insightBlock(kpi)) : ''}
 
@@ -5735,8 +5750,15 @@ function setupDelegatedEvents(){
     const wrap = t.closest('.sortbar');
     const kEl = wrap.querySelector('.sort-k'), dEl = wrap.querySelector('.sort-d');
     SORT_STATE[kind] = { k: kEl.value, d: dEl.value };
-    const host = document.getElementById(kind==='prod' ? 'prodRankTable' : 'wasteRankTable');
-    if(host) host.innerHTML = kind==='prod' ? prodRankTableHtml(CURRENT_KPI) : wasteRankTableHtml(CURRENT_KPI);
+    dEl.disabled = (kEl.value === 'default');
+    if(kind==='prod' || kind==='waste'){
+      const host = document.getElementById(kind==='prod' ? 'prodRankTable' : 'wasteRankTable');
+      if(host) host.innerHTML = kind==='prod' ? prodRankTableHtml(CURRENT_KPI) : wasteRankTableHtml(CURRENT_KPI);
+    } else {
+      const host = document.getElementById('catTbl-'+kind);
+      if(host) host.innerHTML = catSortedTableHtml(kind, CURRENT_KPI);
+      if(kind==='mid'){ const p = document.getElementById('midDetailPanel'); if(p){ p.style.display='none'; p.dataset.cat=''; } }
+    }
     fitScrollBoxes();
   });
   document.addEventListener('input', (e)=>{
