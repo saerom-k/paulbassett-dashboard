@@ -2949,7 +2949,7 @@ function fitScrollBoxes(){
     box.style.maxHeight = Math.ceil(rb.bottom - tb.top + 8) + 'px';
   });
 }
-let SORT_STATE = { prod:{k:'net', d:'desc'}, waste:{k:'default', d:'desc'}, mid:{k:'net', d:'desc'}, sub:{k:'net', d:'desc'} };
+let SORT_STATE = { prod:{k:'net', d:'desc'}, waste:{k:'amt', d:'desc'}, mid:{k:'net', d:'desc'}, sub:{k:'net', d:'desc'} };
 function sortList(list, key, dir){
   if(key==='default') return list.map(x=>Object.assign({}, x));   // 기본정렬: 원래 순서·순위 그대로
   const val = x => key==='growth' ? ((x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null) : x[key];
@@ -3352,7 +3352,7 @@ function wasteBlock(kpi){
     <div class="card"><div class="label">폐기금액(VAT 별도)</div><div class="value nowrap">${fmtWon(kpi.wasteTotalAmt)}</div>${(kpi.isPeriod && !kpi.isAvgView) ? `<div class="sub nowrap">월평균 ${fmtWon(kpi.wasteTotalAmt/kpi.effMonths)}</div>` : ''}</div>
     <div class="card"><div class="label">폐기율</div><div class="value">${fmtPct(kpi.wasteRate, 2)}</div><div class="sub">폐기금액(VAT 별도) / ${kpi.isPeriod?'기간':'당월'} 누계 매출</div></div>
   </div>`;
-  const top20Table = sortBarHtml('waste', [['default','기본정렬'],['amt','폐기금액'],['qty','폐기수량']]) + `<div id="wasteRankTable">${wasteRankTableHtml(kpi)}</div>`;
+  const top20Table = sortBarHtml('waste', [['amt','폐기금액'],['qty','폐기수량']]) + `<div id="wasteRankTable">${wasteRankTableHtml(kpi)}</div>`;
 
   const reasonRows = (kpi.wasteReasonList||[]).map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.reason}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.amt)}</td><td>${fmtPct(x.share,1)}</td><td class="bar-cell" style="width:120px">${barCell(x.amt, kpi.wasteReasonList[0]?kpi.wasteReasonList[0].amt:0)}</td></tr>`).join('');
   const reasonTable = `<div class="tablewrap"><table class="dt">
@@ -5130,13 +5130,15 @@ async function exportPDF(evt){
     // jsPDF의 기본 save()는 일부 브라우저(특히 download 속성 미지원 환경)에서
     // 새/현재 탭에 PDF를 바로 여는 방식으로 대체 동작할 수 있어, 직접 Blob URL을
     // 만들어 download 속성이 있는 링크로만 저장(다운로드)되도록 처리합니다.
-    const blobUrl = URL.createObjectURL(pdf.output('blob'));
+    // PDF 형식(application/pdf) 그대로 두면 브라우저가 현재 창에서 PDF 뷰어로 열어버리므로,
+    // 일반 파일(octet-stream)로 내려받게 해 대시보드 화면을 그대로 유지합니다.
+    const blobUrl = URL.createObjectURL(new Blob([pdf.output('arraybuffer')], { type:'application/octet-stream' }));
     const a = document.createElement('a');
-    a.href = blobUrl; a.download = fileName;
+    a.href = blobUrl; a.download = fileName; a.rel = 'noopener'; a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(blobUrl), 4000);
+    setTimeout(()=>URL.revokeObjectURL(blobUrl), 30000);
   }catch(err){
     console.error(err);
     alert('PDF 저장 중 오류가 발생했습니다: ' + err.message);
