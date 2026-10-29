@@ -347,6 +347,13 @@
   table.dt tr.mid-row.active td:first-child::before{ content:"▾ "; }
   table.dt tr.mid-row:not(.active) td:first-child::before{ content:"▸ "; color: var(--text-mute); }
   table.dt tfoot td{ border-top:2px solid var(--accent); border-bottom:none; font-weight:800; color: var(--accent); padding-top:11px; }
+  .tablewrap.vscroll{ overflow-y:auto; max-height:340px; overscroll-behavior:contain; }
+  .tablewrap.vscroll thead th{ position:sticky; top:0; z-index:3; background: var(--surface); }
+  body.pdf-export-mode .tablewrap.vscroll{ max-height:none !important; overflow:visible !important; }
+  .scroll-hint{ font-size:.78rem; color:var(--text-mute); margin:6px 2px 0; }
+  .sortbar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 10px; }
+  .sortbar .sortlabel{ font-size:.8rem; font-weight:700; color:var(--text-mute); }
+  .sortbar select{ font:inherit; font-size:.85rem; font-weight:600; padding:6px 10px; border:1px solid var(--border); border-radius:10px; background:var(--surface); color:var(--text); }
   .tablewrap{ background: var(--surface); border:1px solid var(--border); border-radius:14px; padding:6px 16px; overflow-x:auto; box-shadow: var(--shadow); -webkit-overflow-scrolling:touch; }
   .rankbadge{
     display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px;
@@ -2199,14 +2206,14 @@ async function computeAll(){
   const subGrowthCandidates = subList
     .filter(x=>x.lyNet!=null && x.lyNet>=GROWTH_MIN_LY_NET && x.net>0)
     .map(x=>({ name:x.name, net:x.net, lyNet:x.lyNet, growth:(x.net-x.lyNet)/x.lyNet }));
-  const subGrowthUp = subGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth).slice(0,5);
-  const subGrowthDown = subGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth).slice(0,5);
+  const subGrowthUp = subGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth);
+  const subGrowthDown = subGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth);
 
   const prodGrowthCandidates = productAll
     .filter(x=>x.lyNet!=null && x.lyNet>=GROWTH_MIN_LY_NET && x.net>0)
     .map(x=>({ name:x.name, net:x.net, lyNet:x.lyNet, growth:(x.net-x.lyNet)/x.lyNet }));
-  const prodGrowthUp = prodGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth).slice(0,5);
-  const prodGrowthDown = prodGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth).slice(0,5);
+  const prodGrowthUp = prodGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth);
+  const prodGrowthDown = prodGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth);
 
   // ---- 6. waste TOP20 (+ 전체 순위) ----
   const monthWasteRows = wasteRows.filter(r=>{
@@ -2475,10 +2482,10 @@ function growthTable(items, positive){
     <td>${fmtWon(x.lyNet)}</td>
     <td class="${positive?'pos':'neg'}">${fmtSignedPct(x.growth)}</td>
   </tr>`).join('');
-  return `<div class="tablewrap"><table class="dt">
+  return wrapScroll(`<div class="tablewrap"><table class="dt">
     <thead><tr><th>순위</th><th style="text-align:left">이름</th><th>당월 매출</th><th>${REF_LABEL} 매출</th><th>성장률</th></tr></thead>
     <tbody>${rows}</tbody>
-  </table></div>`;
+  </table></div>`, 5, items.length);
 }
 function insightBlock(kpi){
   return `<div class="two-col" style="grid-template-columns:1fr 1fr">
@@ -2499,7 +2506,7 @@ function insightBlock(kpi){
       ${growthTable(kpi.prodGrowthDown, false)}
     </div>
   </div>
-  <p class="note">${kpi.refLabel} 매출이 1만원 미만으로 아주 작은 항목은 소수 판매만으로 성장률이 크게 튈 수 있어 순위 대상에서 제외했습니다.</p>`;
+  <p class="note">각 표는 TOP 5만 보이며, 5개 이후는 목록 안에서 스크롤하면 최하순위까지 볼 수 있습니다. ${kpi.refLabel} 매출이 1만원 미만으로 아주 작은 항목은 소수 판매만으로 성장률이 크게 튈 수 있어 순위 대상에서 제외했습니다.</p>`;
 }
 function productMixChartsBlock(kpi){
   const mix = kpi.coffeeMix || {lungo:0, americano:0, decaf:0};
@@ -2692,6 +2699,7 @@ function render(res){
         <div class="card gauge-card">${gaugeSVG(monthAchieve)}<div><div class="label">목표 달성률</div><div class="value" style="font-size:1.3rem;color:${monthAchieve>=1?'var(--rise)':'var(--negative)'}">${fmtPct(monthAchieve)}</div></div></div>
         <div class="card"><div class="label">${kpi.refMonthLabel} 매출</div><div class="value">${kpi.hasPrevYear? fmtWon(kpi.lastYearMonthTotal):'-'}</div></div>
       </div>
+      ${targetChallengeBlock(kpi)}
     `)}
 
     ${kpi.storeRanking ? block('RANKING2', `전월 매장 순위(${kpi.storeRanking.rankMonth}월)`, storeRankingBlock(kpi)) : ''}
@@ -2743,6 +2751,7 @@ function render(res){
           ${kpi.lastYearTraffic ? dowCard('주말 (토·일)', kpi.lastYearTraffic.weekendStats) : dowCardEmpty('주말 (토·일)')}
         </div>
       </div>
+      ${monthDowTable(kpi)}
     `)}
 
     ${block('CATEGORY', '카테고리별 매출 — 대분류', kpi.hasProd ? `
@@ -2766,12 +2775,11 @@ function render(res){
         <span id="productSearchCount" class="search-count"></span>
       </div>
       <div id="productSearchResult"></div>
-      <div id="productTop20Wrap">${productTable(kpi.productTop20, kpi.prodTotalQty, kpi.prodTotalNet)}</div>
+      <div id="productTop20Wrap">${prodRankingBlock(kpi)}</div>
     ` : `<div class="empty-hint">상품별매출내역조회_일자별 파일이 업로드되지 않았습니다.</div>`)}
 
     ${block('WASTE', '폐기 현황', wasteBlock(kpi))}
 
-    ${(kpi.hasTarget && !kpi.isPeriod) ? block('ANNUAL', '기네스 월매출 도전', guinnessBlock(kpi)) : ''}
     ${block('ANNUAL', '연간 월별 실적', `
       <div class="chart-legend">
         <span><i style="background:var(--surface-3);border:1px solid var(--border)"></i>목표</span>
@@ -2781,6 +2789,7 @@ function render(res){
       </div>
       <div class="tablewrap" style="padding:16px 20px;margin-bottom:16px">${annualChartSVG(kpi.annual)}</div>
       ${annualTable(kpi)}
+      ${annualTopBlock(kpi)}
     `)}
   `;
 }
@@ -2837,6 +2846,43 @@ function channelCard(label, value, total, colorHex, refValue, refTotal, cmpValue
     ${cmpBlock}
   </div>`;
 }
+function targetChallengeBlock(kpi){
+  const goal = kpi.monthTargetTotal;
+  if(!(goal>0)) return '';
+  const remain = Math.max(0, kpi.DIM - kpi.DAY_CUTOFF);
+  const needCum = goal - kpi.cumNet, needFc = goal - kpi.forecast;
+  const reqDaily = remain>0 ? Math.max(0,needCum)/remain : null;
+  const fcDaily = remain>0 ? Math.max(0, kpi.forecast-kpi.cumNet)/remain : null;
+  const addDaily = remain>0 ? Math.max(0,needFc)/remain : null;
+  const curDaily = kpi.DAY_CUTOFF>0 ? kpi.cumNet/kpi.DAY_CUTOFF : 0;
+  let verdict, vcls;
+  if(kpi.cumNet >= goal){ verdict = `이미 목표 달성 (누계 ${fmtWon(kpi.cumNet-goal)} 초과)`; vcls='pos'; }
+  else if(kpi.forecast >= goal){ verdict = `현재 페이스면 목표 달성 가능 (예상 실적이 목표를 ${fmtWon(kpi.forecast-goal)} 초과)`; vcls='pos'; }
+  else { verdict = `예상 실적 기준 목표까지 ${fmtWon(needFc)} 더 필요`; vcls='neg'; }
+  const plus = v => v>0 ? '+'+fmtWon(v) : '달성 가능';
+  return `<div class="subgroup-label" style="margin-top:20px">🎯 목표 매출 달성 도전</div>
+    <p class="note" style="margin:0 0 10px"><b class="${vcls}">${verdict}</b></p>
+    <div class="cards" style="margin-bottom:14px">
+      <div class="card"><div class="label">당월 목표</div><div class="value nowrap">${fmtWon(goal)}</div><div class="sub">누계 ${fmtWon(kpi.cumNet)} (${fmtPct(goal>0?kpi.cumNet/goal:0)})</div></div>
+      <div class="card"><div class="label">목표까지 남은 금액</div><div class="value nowrap">${fmtWon(Math.max(0,needCum))}</div><div class="sub">누계 기준</div></div>
+      <div class="card"><div class="label">이번달 추가 매출</div><div class="value nowrap ${needFc>0?'neg':'pos'}">${plus(needFc)}</div><div class="sub">예상 실적 ${fmtWon(kpi.forecast)} 대비</div></div>
+      <div class="card"><div class="label">남은 ${remain}일 일평균 추가 매출</div><div class="value nowrap ${(addDaily||0)>0?'neg':'pos'}">${addDaily==null?'-':plus(addDaily)}</div><div class="sub">예상 일평균 ${fcDaily==null?'-':fmtWon(fcDaily)} 기준</div></div>
+    </div>
+    <div class="tablewrap" style="margin-bottom:6px"><table class="dt"><tbody>
+      <tr><td style="text-align:left">남은 ${remain}일 필요 일평균 (목표 달성용)</td><td>${reqDaily==null?'-':fmtWon(reqDaily)}</td></tr>
+      <tr><td style="text-align:left">현재까지 일평균 (${kpi.DAY_CUTOFF}일)</td><td>${fmtWon(curDaily)}</td></tr>
+      <tr><td style="text-align:left"><b>예상 실적 대비 추가 필요 매출</b></td><td class="${vcls}"><b>${needFc>0?'+'+fmtWon(needFc):'0원 (달성 가능)'}</b></td></tr>
+      <tr><td style="text-align:left"><b>남은 기간 일평균 추가 필요 매출</b></td><td class="${vcls}"><b>${addDaily==null?'-':(addDaily>0?'+'+fmtWon(addDaily):'0원 (달성 가능)')}</b></td></tr>
+    </tbody></table></div>`;
+}
+function monthDowTable(kpi){
+  const st = kpi.dowStats; if(!st || !st.length) return '';
+  const maxAvg = Math.max(...st.map(d=>d.avg), 1);
+  const rows = st.map(d=>`<tr><td style="text-align:left">${d.g===7?'일 · 공휴일':d.label+'요일'}</td><td>${d.occurredCount}일</td><td>${fmtWon(d.avg)}</td><td class="bar-cell" style="width:160px">${barCell(d.avg, maxAvg)}</td></tr>`).join('');
+  return `<div class="subgroup-label" style="margin-top:20px">요일별 일평균 매출 (당월, ${kpi.DAY_CUTOFF}일까지 영업일 기준)</div><div class="tablewrap"><table class="dt">
+    <thead><tr><th style="text-align:left">요일</th><th>영업일</th><th>일평균 매출</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="note">공휴일은 일요일 평균에 포함해 계산합니다(평일·주말 일평균과 같은 기준).</p>`;
+}
 function dowCard(title, stats, lyStats){
   const growthNet = (lyStats && lyStats.avgNet>0) ? (stats.avgNet-lyStats.avgNet)/lyStats.avgNet : null;
   const diffHc = lyStats ? stats.avgHeadcount - lyStats.avgHeadcount : null;
@@ -2884,6 +2930,63 @@ function catTable(list, total, isSub, clickable, srcMid){
     <tbody>${rows}</tbody>
     <tfoot><tr><td>합계</td><td>${fmtNum(list.reduce((s,x)=>s+x.qty,0))}</td><td>${fmtWon(total)}</td><td>100.0%</td>${hasLY?'<td></td><td></td><td></td><td></td>':''}<td></td></tr></tfoot>
   </table></div>`;
+}
+/* ---- 목록 안 스크롤(N개만 보이고 나머지는 스크롤) + 정렬 필터 공통 ---- */
+function wrapScroll(html, n, count, noun){
+  const out = html.replace('<div class="tablewrap">', `<div class="tablewrap vscroll" data-n="${n}">`);
+  return out + (count > n ? `<div class="scroll-hint">전체 ${count}개 · ${n}개 이후는 목록 안에서 스크롤</div>` : '');
+}
+function fitScrollBoxes(){
+  document.querySelectorAll('.tablewrap.vscroll[data-n]').forEach(box=>{
+    if(!box.offsetParent) return;
+    const n = parseInt(box.getAttribute('data-n'), 10);
+    const table = box.querySelector('table'); if(!table) return;
+    const rows = Array.from(table.querySelectorAll(':scope > tbody > tr')).filter(r=>!r.classList.contains('inl') && !r.classList.contains('inl-msg'));
+    const hrows = table.querySelectorAll(':scope > thead > tr');
+    let acc = 0; hrows.forEach((tr,i)=>{ if(i>0) tr.querySelectorAll('th').forEach(th=>{ th.style.top = acc+'px'; }); acc += tr.offsetHeight; });
+    if(rows.length <= n){ box.style.maxHeight = 'none'; return; }
+    const tb = table.getBoundingClientRect(), rb = rows[n-1].getBoundingClientRect();
+    box.style.maxHeight = Math.ceil(rb.bottom - tb.top + 8) + 'px';
+  });
+}
+let SORT_STATE = { prod:{k:'net', d:'desc'}, waste:{k:'amt', d:'desc'} };
+function sortList(list, key, dir){
+  const val = x => key==='growth' ? ((x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null) : x[key];
+  const arr = list.slice().sort((a,b)=>{
+    const va = val(a), vb = val(b);
+    if(va==null && vb==null) return 0; if(va==null) return 1; if(vb==null) return -1;
+    return dir==='asc' ? va-vb : vb-va;
+  });
+  return arr.map((x,i)=>Object.assign({}, x, {rank:i+1}));
+}
+function sortBarHtml(kind, opts){
+  const cur = SORT_STATE[kind];
+  return `<div class="sortbar"><span class="sortlabel">정렬</span>
+    <select class="sort-k" data-sortfor="${kind}">${opts.map(o=>`<option value="${o[0]}"${cur.k===o[0]?' selected':''}>${o[1]}</option>`).join('')}</select>
+    <select class="sort-d" data-sortfor="${kind}"><option value="desc"${cur.d==='desc'?' selected':''}>높은순 (내림차순)</option><option value="asc"${cur.d==='asc'?' selected':''}>낮은순 (오름차순)</option></select></div>`;
+}
+function prodRankTableHtml(kpi){
+  const base = (kpi.productAll && kpi.productAll.length) ? kpi.productAll : (kpi.productTop20||[]);
+  const hasLY = base.some(x=>x.lyNet!=null);
+  let st = SORT_STATE.prod; if(st.k==='growth' && !hasLY) st = SORT_STATE.prod = {k:'net', d:st.d};
+  const list = sortList(base, st.k, st.d);
+  return wrapScroll(productTable(list, kpi.prodTotalQty, kpi.prodTotalNet), 20, list.length);
+}
+function prodRankingBlock(kpi){
+  const base = (kpi.productAll && kpi.productAll.length) ? kpi.productAll : (kpi.productTop20||[]);
+  const hasLY = base.some(x=>x.lyNet!=null);
+  const opts = [['net','매출액'],['qty','수량'],['share','비중']].concat(hasLY ? [['growth','성장률']] : []);
+  return sortBarHtml('prod', opts) + `<div id="prodRankTable">${prodRankTableHtml(kpi)}</div>`;
+}
+function wasteRankTableHtml(kpi){
+  const base = (kpi.wasteAll && kpi.wasteAll.length) ? kpi.wasteAll : (kpi.wasteTop20||[]);
+  const st = SORT_STATE.waste;
+  const list = sortList(base.map(x=>Object.assign({net:0}, x)), st.k, st.d);
+  const rows = list.map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.name}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.unitPrice)}</td><td>${fmtWon(x.amt)}</td><td>${fmtPct(x.rate,2)}</td><td style="text-align:left"><span class="pill">${x.reason||'-'}</span></td></tr>`).join('');
+  return wrapScroll(`<div class="tablewrap"><table class="dt">
+    <thead><tr><th>순위</th><th style="text-align:left">상품명</th><th>폐기수량</th><th>단가</th><th>폐기금액(VAT 별도)</th><th>폐기율</th><th style="text-align:left">폐기사유</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`, 20, list.length);
 }
 function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 /* ---- 인라인 펼침: 대분류 클릭 → 바로 아래 소분류, 소분류 클릭 → 바로 아래 상품 ---- */
@@ -3221,11 +3324,7 @@ function wasteBlock(kpi){
     <div class="card"><div class="label">폐기금액(VAT 별도)</div><div class="value nowrap">${fmtWon(kpi.wasteTotalAmt)}</div>${(kpi.isPeriod && !kpi.isAvgView) ? `<div class="sub nowrap">월평균 ${fmtWon(kpi.wasteTotalAmt/kpi.effMonths)}</div>` : ''}</div>
     <div class="card"><div class="label">폐기율</div><div class="value">${fmtPct(kpi.wasteRate, 2)}</div><div class="sub">폐기금액(VAT 별도) / ${kpi.isPeriod?'기간':'당월'} 누계 매출</div></div>
   </div>`;
-  const rows = kpi.wasteTop20.map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.name}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.unitPrice)}</td><td>${fmtWon(x.amt)}</td><td>${fmtPct(x.rate,2)}</td><td style="text-align:left"><span class="pill">${x.reason||'-'}</span></td></tr>`).join('');
-  const top20Table = `<div class="tablewrap"><table class="dt">
-    <thead><tr><th>순위</th><th style="text-align:left">상품명</th><th>폐기수량</th><th>단가</th><th>폐기금액(VAT 별도)</th><th>폐기율</th><th style="text-align:left">폐기사유</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table></div>`;
+  const top20Table = sortBarHtml('waste', [['amt','폐기금액'],['qty','폐기수량']]) + `<div id="wasteRankTable">${wasteRankTableHtml(kpi)}</div>`;
 
   const reasonRows = (kpi.wasteReasonList||[]).map(x=>`<tr><td><span class="rankbadge">${x.rank}</span></td><td style="text-align:left">${x.reason}</td><td>${fmtNum(x.qty)}</td><td>${fmtWon(x.amt)}</td><td>${fmtPct(x.share,1)}</td><td class="bar-cell" style="width:120px">${barCell(x.amt, kpi.wasteReasonList[0]?kpi.wasteReasonList[0].amt:0)}</td></tr>`).join('');
   const reasonTable = `<div class="tablewrap"><table class="dt">
@@ -3241,9 +3340,21 @@ function wasteBlock(kpi){
     <div class="subgroup-label" style="margin-top:20px">요일별 폐기 금액 추이 <span style="font-weight:600;color:var(--text-mute)">(단위: 만)</span></div>
     ${trendChart}
     ${wasteDailyBlock(kpi)}
-    <div class="subgroup-label" style="margin-top:20px">폐기 상위 TOP 20</div>
+    <div class="subgroup-label" style="margin-top:20px">폐기 상품 TOP 20 <span style="font-weight:600;color:var(--text-mute)">(전체 품목은 목록 안에서 스크롤)</span></div>
     ${top20Table}
   `;
+}
+function annualTopBlock(kpi){
+  const list = (kpi.annual||[]).filter(a=>a.actual>0).slice().sort((a,b)=>b.actual-a.actual);
+  if(!list.length) return '';
+  const rows = list.map((a,i)=>`<tr${a.isCurrent?' style="background:var(--accent-soft)"':''}><td><span class="rankbadge">${i+1}</span></td>
+    <td style="text-align:left">${a.month}월${a.isCurrent?' <span class="pill">전망 반영</span>':''}</td><td>${fmtWon(a.actual)}</td>
+    <td>${a.lastYear>0?fmtWon(a.lastYear):'-'}</td>
+    <td class="${a.yoy==null?'':(a.yoy>=0?'pos':'neg')}">${a.yoy==null?'-':fmtSignedPct(a.yoy)}</td>
+    <td>${a.achieveRate==null?'-':fmtPct(a.achieveRate)}</td></tr>`).join('');
+  return `<div class="subgroup-label" style="margin-top:20px">연간 월매출 TOP 5</div>` + wrapScroll(`<div class="tablewrap"><table class="dt">
+    <thead><tr><th>순위</th><th style="text-align:left">월</th><th>매출(VAT 별도)</th><th>전년 실적</th><th>전년비</th><th>달성률</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`, 5, list.length);
 }
 function annualTable(kpi){
   const rows = kpi.annual.map(a=>`<tr style="${a.isCurrent?'background:var(--accent-soft)':''}">
@@ -3521,14 +3632,14 @@ function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_
   const subGrowthCandidates = subList
     .filter(x=>x.lyNet!=null && x.lyNet>=GROWTH_MIN_LY_NET && x.net>0)
     .map(x=>({ name:x.name, net:x.net, lyNet:x.lyNet, growth:(x.net-x.lyNet)/x.lyNet }));
-  const subGrowthUp = subGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth).slice(0,5);
-  const subGrowthDown = subGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth).slice(0,5);
+  const subGrowthUp = subGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth);
+  const subGrowthDown = subGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth);
 
   const prodGrowthCandidates = productAll
     .filter(x=>x.lyNet!=null && x.lyNet>=GROWTH_MIN_LY_NET && x.net>0)
     .map(x=>({ name:x.name, net:x.net, lyNet:x.lyNet, growth:(x.net-x.lyNet)/x.lyNet }));
-  const prodGrowthUp = prodGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth).slice(0,5);
-  const prodGrowthDown = prodGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth).slice(0,5);
+  const prodGrowthUp = prodGrowthCandidates.slice().sort((a,b)=>b.growth-a.growth);
+  const prodGrowthDown = prodGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth);
 
 
   return { coffeeMix, milldoNet, milldoQty, milldoProductList, milldoProdQtyTotal,
@@ -4130,7 +4241,7 @@ function renderPeriod(raw){
         <span id="productSearchCount" class="search-count"></span>
       </div>
       <div id="productSearchResult"></div>
-      <div id="productTop20Wrap">${productTable(kpi.productTop20, kpi.prodTotalQty, kpi.prodTotalNet)}</div>
+      <div id="productTop20Wrap">${prodRankingBlock(kpi)}</div>
     ` : emptyProd)}
     ${block('WASTE', '폐기 현황', wasteBlock(kpi))}
   `;
@@ -5617,6 +5728,17 @@ function setupDelegatedEvents(){
   });
   // 검색창에 포커스가 있으면 입력칸이 넓어지며 [검색] 버튼이 밀려나 클릭이 빗나가므로, 버튼을 눌러도 포커스를 유지합니다.
   document.addEventListener('mousedown', (e)=>{ if(e.target && e.target.id === 'topSearchBtn') e.preventDefault(); });
+  document.addEventListener('change', (e)=>{
+    const t = e.target;
+    if(!t || !t.dataset || !t.dataset.sortfor || !CURRENT_KPI) return;
+    const kind = t.dataset.sortfor;
+    const wrap = t.closest('.sortbar');
+    const kEl = wrap.querySelector('.sort-k'), dEl = wrap.querySelector('.sort-d');
+    SORT_STATE[kind] = { k: kEl.value, d: dEl.value };
+    const host = document.getElementById(kind==='prod' ? 'prodRankTable' : 'wasteRankTable');
+    if(host) host.innerHTML = kind==='prod' ? prodRankTableHtml(CURRENT_KPI) : wasteRankTableHtml(CURRENT_KPI);
+    fitScrollBoxes();
+  });
   document.addEventListener('input', (e)=>{
     if(e.target && e.target.id === 'productSearchInput'){
       searchProducts(e.target.value);
@@ -5677,11 +5799,13 @@ function applyTab(key, scroll){
   const onBtn = bar && bar.querySelector('button.on');
   if(onBtn && onBtn.scrollIntoView){ try{ bar.scrollTo({left: onBtn.offsetLeft - 20, behavior:'smooth'}); }catch(e){} }
   setTimeout(fitChanValues, 0); setTimeout(fitChanValues, 300);
+  setTimeout(fitScrollBoxes, 0); setTimeout(fitScrollBoxes, 350);
   if(scroll && bar){
     const top = bar.getBoundingClientRect().top + window.scrollY - 0;
     if(window.scrollY > top) window.scrollTo({top: top, behavior:'auto'});
   }
 }
+window.addEventListener('resize', ()=>{ try{ fitScrollBoxes(); }catch(e){} });
 function setupTabs(){
   const el = document.getElementById('dashScreen');
   if(!el || el.style.display === 'none') return;
