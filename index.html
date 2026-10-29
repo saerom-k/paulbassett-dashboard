@@ -328,6 +328,18 @@
   table.dt th.group-head.cur{ color:var(--accent); border-bottom-color:var(--accent); }
   table.dt th.group-head.ly{ color:var(--info); border-bottom-color:var(--info); }
   table.dt tbody tr:hover{ background: var(--accent-soft); }
+  table.dt tr.sub-row, table.dt tr.fp-row{ cursor:pointer; }
+  table.dt tr.sub-row:hover, table.dt tr.fp-row:hover{ background: var(--accent-soft); }
+  table.dt tr.sub-row td:first-child::before, table.dt tr.fp-row td:first-child::before{ content:"▸ "; color: var(--text-mute); }
+  table.dt tr.sub-row.inl-open td:first-child::before, table.dt tr.fp-row.inl-open td:first-child::before{ content:"▾ "; color: var(--accent); }
+  table.dt tr.inl{ background: rgba(120,120,120,.06); }
+  table.dt tr.inl td{ font-size:.86rem; }
+  table.dt tr.sub-row.inl td:first-child{ font-weight:600; text-align:left; }
+  table.dt tr.prod-inl{ background: rgba(120,120,120,.11); cursor:default; }
+  table.dt tr.prod-inl td:first-child{ text-align:left; }
+  table.dt tr.fp-inl{ background: rgba(120,120,120,.08); }
+  table.dt tr.fp-inl td{ font-size:.86rem; }
+  table.dt .inl-note{ color: var(--text-mute); font-size:.72rem; }
   table.dt tr.mid-row{ cursor:pointer; }
   table.dt tr.mid-row td:first-child{ font-weight:700; }
   table.dt tr.mid-row.active{ background: var(--accent-soft); }
@@ -1126,10 +1138,14 @@ function filterRowsByStore(rows, storeCol, storeNorm){
     return cell===storeNorm || cell.includes(storeNorm) || storeNorm.includes(cell);
   });
 }
+function bucketItems(b){
+  return Object.keys(b.items||{}).map(n=>({ name:n, qty:b.items[n].qty, net:b.items[n].net })).sort((a,b2)=>b2.net-a.net).slice(0,30);
+}
 function aggregateCategoryData(rows, PCOL, midMap){
   const midAgg = {}; MID_CATS.forEach(c=>midAgg[c] = {qty:0, net:0});
   const subAgg = {};
   const detailRaw = {}; MID_CATS.forEach(c=> detailRaw[c] = {subs:{}, prods:{}});
+  const treeRaw = {}; MID_CATS.forEach(c=> treeRaw[c] = {});
   rows.forEach(r=>{
     const midRaw = str(r[PCOL.mid]);
     const subRaw = str(r[PCOL.sub]);
@@ -1146,9 +1162,34 @@ function aggregateCategoryData(rows, PCOL, midMap){
     if(name && name!=='합계'){
       if(!dRaw.prods[name]) dRaw.prods[name] = {qty:0, net:0};
       dRaw.prods[name].qty += qty; dRaw.prods[name].net += net;
+      const tr = treeRaw[mapped]; if(!tr[subRaw]) tr[subRaw] = {};
+      if(!tr[subRaw][name]) tr[subRaw][name] = {qty:0, net:0};
+      tr[subRaw][name].qty += qty; tr[subRaw][name].net += net;
     }
   });
-  return { midAgg, subAgg, detailRaw };
+  return { midAgg, subAgg, detailRaw, treeRaw };
+}
+/* 대분류 → 소분류 → 상품 펼침용 데이터. catTree[대분류][소분류] = 상품 목록, subTree[소분류] = 대분류 전체 합산 상품 목록 */
+function buildCatTree(curAgg, refAgg){
+  const hasRef = !!refAgg;
+  const toList = (c, r)=>Object.keys(c).map(n=>({ name:n, qty:c[n].qty, net:c[n].net,
+    lyQty: hasRef ? (r&&r[n] ? r[n].qty : 0) : null, lyNet: hasRef ? (r&&r[n] ? r[n].net : 0) : null }))
+    .sort((a,b)=>b.net-a.net).slice(0,60);
+  const T = curAgg.treeRaw||{}, R = hasRef ? (refAgg.treeRaw||{}) : null;
+  const tree = {}, flatC = {}, flatR = {};
+  const add = (dst, src)=>{ Object.keys(src).forEach(n=>{ if(!dst[n]) dst[n]={qty:0,net:0}; dst[n].qty+=src[n].qty; dst[n].net+=src[n].net; }); };
+  Object.keys(T).forEach(mid=>{
+    tree[mid] = {};
+    Object.keys(T[mid]).forEach(sub=>{
+      const rr = R && R[mid] && R[mid][sub] ? R[mid][sub] : {};
+      tree[mid][sub] = toList(T[mid][sub], R ? rr : null);
+      if(!flatC[sub]) flatC[sub] = {}; add(flatC[sub], T[mid][sub]);
+      if(R){ if(!flatR[sub]) flatR[sub] = {}; add(flatR[sub], rr); }
+    });
+  });
+  const flat = {};
+  Object.keys(flatC).forEach(sub=>{ flat[sub] = toList(flatC[sub], R ? (flatR[sub]||{}) : null); });
+  return { catTree: tree, subTree: flat };
 }
 
 /* 2020~2025년 대한민국 법정공휴일(대체공휴일·임시공휴일 포함). 전년도 실적을 "주말+공휴일" 기준으로
@@ -1885,10 +1926,11 @@ async function computeAll(){
   const midAgg = catCur.midAgg, subAgg = catCur.subAgg, midDetailRaw = catCur.detailRaw;
 
   const hasProdLY = monthProdRowsLY.length > 0;
-  let midAggLY = {}, subAggLY = {}, midDetailRawLY = {};
+  let midAggLY = {}, subAggLY = {}, midDetailRawLY = {}, catLYagg = null;
   MID_CATS.forEach(c=>midAggLY[c] = {qty:0, net:0});
   if(hasProdLY){
     const catLY = aggregateCategoryData(monthProdRowsLY, PCOL_LY, midMap);
+    catLYagg = catLY;
     midAggLY = catLY.midAgg; subAggLY = catLY.subAgg; midDetailRawLY = catLY.detailRaw;
   }
   const midTotalLY = Object.values(midAggLY).reduce((s,v)=>s+v.net,0);
@@ -2005,7 +2047,7 @@ async function computeAll(){
   const productTop20 = productAll.slice(0,20);
 
   // ---- 주요상품 실적 · 신메뉴 실적 · 전체 사이즈 비중 (아이템코드 → 공식 제품군 마스터 기준) ----
-  function newBucket(){ return {qty:0, net:0, standardQty:0, standardNet:0, grandQty:0, grandNet:0, ventiQty:0, ventiNet:0, hasSizeInfo:false}; }
+  function newBucket(){ return {items:{}, qty:0, net:0, standardQty:0, standardNet:0, grandQty:0, grandNet:0, ventiQty:0, ventiNet:0, hasSizeInfo:false}; }
   // 버킷은 label(표시명) 기준으로 유일하게 키를 잡습니다. 각 정의는 group(제품군명 일치) 또는
   // codes(특정 아이템코드 목록, 공용 그룹을 정밀하게 쪼갤 때 사용) 중 하나로 매칭됩니다.
   const featuredBuckets = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ featuredBuckets[d.label] = newBucket(); });
@@ -2034,6 +2076,7 @@ async function computeAll(){
     if(fKey && featuredBuckets[fKey]){
       const b = featuredBuckets[fKey];
       b.qty+=qty; b.net+=net;
+      { const pn = str(r[PCOL.name]); if(pn){ if(!b.items[pn]) b.items[pn]={qty:0,net:0}; b.items[pn].qty+=qty; b.items[pn].net+=net; } }
       if(size==='STANDARD'){ b.standardQty+=qty; b.standardNet+=net; b.hasSizeInfo=true; }
       else if(size==='GRAND'){ b.grandQty+=qty; b.grandNet+=net; b.hasSizeInfo=true; }
       else if(size==='VENTI'){ b.ventiQty+=qty; b.ventiNet+=net; b.hasSizeInfo=true; }
@@ -2041,6 +2084,7 @@ async function computeAll(){
     const nKey = (codeNorm && newMenuCodeMap[codeNorm]) || (group && newMenuGroupMap[group]);
     if(nKey && newMenuBuckets[nKey]){
       newMenuBuckets[nKey].qty+=qty; newMenuBuckets[nKey].net+=net;
+      { const pn = str(r[PCOL.name]); const bi = newMenuBuckets[nKey].items; if(pn){ if(!bi[pn]) bi[pn]={qty:0,net:0}; bi[pn].qty+=qty; bi[pn].net+=net; } }
     }
   });
   const featuredProductStats = FEATURED_PRODUCTS_DEF.map(d=>{
@@ -2049,6 +2093,7 @@ async function computeAll(){
     return {
       name: d.label, qty:a.qty, net:a.net, share: prodTotalNet>0? a.net/prodTotalNet:0,
       avgDailyQty: DAY_CUTOFF>0 ? a.qty/DAY_CUTOFF : 0,
+      items: bucketItems(a),
       hasSizeInfo: a.hasSizeInfo,
       standardQty:a.standardQty, standardNet:a.standardNet, standardShare: sizeTotal>0? a.standardNet/sizeTotal:0,
       grandQty:a.grandQty, grandNet:a.grandNet, grandShare: sizeTotal>0? a.grandNet/sizeTotal:0,
@@ -2060,6 +2105,7 @@ async function computeAll(){
     return {
       name: d.label, qty:a.qty, net:a.net, share: prodTotalNet>0? a.net/prodTotalNet:0,
       avgDailyQty: DAY_CUTOFF>0 ? a.qty/DAY_CUTOFF : 0,
+      items: bucketItems(a),
     };
   });
   const overallSizeMix = { standard: overallStandardNet, grand: overallGrandNet, venti: overallVentiNet };
@@ -2146,6 +2192,10 @@ async function computeAll(){
     amt: wasteWeekdayAgg[i].count>0 ? wasteWeekdayAgg[i].amt/wasteWeekdayAgg[i].count : 0,
     qty: wasteWeekdayAgg[i].count>0 ? wasteWeekdayAgg[i].qty/wasteWeekdayAgg[i].count : 0,
   }));
+  const wasteDaily = daily.filter(d=>d.dateStr && d.day<=DAY_CUTOFF).map(d=>{
+    const w = wasteDateAgg[d.dateStr];
+    return { dateStr:d.dateStr, dow:d.dow, amt: w?w.amt:0, qty: w?w.qty:0, net: d.net||0 };
+  });
 
   // ---- 7. day-of-week averages & forecast ----
   // 요일별 평균매출(7-1)은 "이미 지난 날짜"만으로 평균을 내야 한다. 아직 오지 않은 날짜를 0으로
@@ -2199,12 +2249,12 @@ async function computeAll(){
     refPosTotal, refKioskTotal, refDtTotal, refDeliveryTotal, refMemberTotal, hasRefChannel, hasRefMember,
     posTotalForCompare, kioskTotalForCompare, dtTotalForCompare, deliveryTotalForCompare, memberTotalForCompare,
     weekdayStats, weekendStats, lastYearTraffic,
-    midList, midTotal, subList, subTotal, midDetailList,
+    midList, midTotal, subList, subTotal, midDetailList, ...buildCatTree(catCur, catLYagg),
     productTop20, productAll, prodTotalNet, prodTotalQty,
     subGrowthUp, subGrowthDown, prodGrowthUp, prodGrowthDown,
     featuredProductStats, newMenuStats, overallSizeMix,
     wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, hasWaste: !!aoaWaste,
-    wasteReasonList, wasteWeekdayTrend,
+    wasteReasonList, wasteWeekdayTrend, wasteDaily,
     hasProd: !!aoaProd, hasProdLY, hasPos: !!aoaPos, hasTarget: !!targetWB,
     hasPrevYear: !!aoaPrev || (REF_MODE==='YOY' && !!lastYearDailyFromTarget),
     refPartial: REF_PARTIAL, refDayMin: REF_DAY_MIN, refDayMax: REF_DAY_MAX,
@@ -2288,7 +2338,7 @@ function overallSizeMixBlock(kpi){
 function featuredProductBlock(kpi){
   const chartsRow = productMixChartsBlock(kpi);
   const list = kpi.featuredProductStats||[];
-  const mainRows = list.map(x=>`<tr>
+  const mainRows = list.map((x,i)=>`<tr class="fp-row" data-fp="feat" data-idx="${i}">
     <td style="text-align:left">${x.name}</td>
     <td>${fmtNum(x.qty)}</td>
     <td>${fmtWon(x.net)}</td>
@@ -2321,7 +2371,7 @@ function featuredProductBlock(kpi){
 }
 function newMenuBlock(kpi){
   const list = kpi.newMenuStats||[];
-  const rows = list.map(x=>`<tr>
+  const rows = list.map((x,i)=>`<tr class="fp-row" data-fp="new" data-idx="${i}">
     <td style="text-align:left">${x.name}</td>
     <td>${fmtNum(x.qty)}</td>
     <td>${fmtWon(x.net)}</td>
@@ -2713,14 +2763,15 @@ function dowCard(title, stats, lyStats){
 function dowCardEmpty(title){
   return `<div class="card"><div class="label">${title}</div><div class="value" style="font-size:1.2rem">-</div><div class="sub">${REF_LABEL} 파일 필요</div></div>`;
 }
-function catTable(list, total, isSub, clickable){
+function catTable(list, total, isSub, clickable, srcMid){
   if(!list.length || total===0) return `<div class="empty-hint">데이터가 없습니다. 상품별매출내역조회 파일의 매출일자·중분류·소분류 열 위치를 확인해주세요.</div>`;
   const hasLY = list.some(x=>x.lyNet!=null);
   const max = list.length ? Math.max(...list.map(x=>x.net)) : 0;
   const rows = list.map(x=>{
     // 클릭 핸들러는 인라인 onclick 속성 대신, 일부 브라우저/보안 설정에서 더 안정적으로
     // 동작하는 이벤트 위임(addEventListener, 아래 setupDelegatedEvents 참고) 방식을 사용합니다.
-    const attrs = clickable ? ` class="mid-row" data-cat="${escapeHtml(x.name)}"` : '';
+    const attrs = clickable ? ` class="mid-row" data-cat="${escapeHtml(x.name)}"`
+      : (isSub ? ` class="sub-row" data-sub="${escapeHtml(x.name)}" data-src="${srcMid?('mid:'+escapeHtml(srcMid)):'all'}"` : '');
     const growth = (hasLY && x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null;
     return `<tr${attrs}>
       <td>${x.name}</td>
@@ -2751,6 +2802,115 @@ function catTable(list, total, isSub, clickable){
   </table></div>`;
 }
 function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+/* ---- 인라인 펼침: 대분류 클릭 → 바로 아래 소분류, 소분류 클릭 → 바로 아래 상품 ---- */
+function inlRowHtml(cls, attrs, x, hasLY, indent, labelPrefix){
+  const growth = (hasLY && x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null;
+  return `<tr class="${cls}" ${attrs}>
+    <td style="padding-left:${indent}px">${labelPrefix||''}${escapeHtml(x.name)}</td>
+    <td>${fmtNum(x.qty)}</td>
+    <td>${fmtWon(x.net)}</td>
+    <td>${x.share!=null?fmtPct(x.share):'-'}</td>
+    ${hasLY?`<td class="${growth===null?'':(growth>=0?'pos':'neg')}">${growth===null?'-':fmtSignedPct(growth)}</td>`:''}
+    ${hasLY?`<td>${x.lyQty!=null?fmtNum(x.lyQty):'-'}</td>`:''}
+    ${hasLY?`<td>${x.lyNet!=null?fmtWon(x.lyNet):'-'}</td>`:''}
+    ${hasLY?`<td>${x.lyShare!=null?fmtPct(x.lyShare):'-'}</td>`:''}
+    <td></td>
+  </tr>`;
+}
+function inlMsgRow(cls, attrs, text, cols){
+  return `<tr class="${cls} inl-msg" ${attrs}><td colspan="${cols}" style="text-align:left;padding-left:40px;color:var(--text-mute);font-size:.82rem">${text}</td></tr>`;
+}
+function removeInlineAfter(tr, selFn){
+  let n = tr.nextElementSibling, removed = false;
+  while(n && selFn(n)){ const nx = n.nextElementSibling; n.remove(); n = nx; removed = true; }
+  return removed;
+}
+function collapseMidInline(exceptCat){
+  document.querySelectorAll('tr.mid-row.inl-open').forEach(r=>{
+    if(r.getAttribute('data-cat') === exceptCat) return;
+    const c = r.getAttribute('data-cat');
+    removeInlineAfter(r, n=>n.classList.contains('inl') && n.getAttribute('data-mid') === c);
+    r.classList.remove('inl-open');
+  });
+}
+function toggleMidInline(row){
+  if(!CURRENT_KPI) return;
+  const cat = row.getAttribute('data-cat');
+  const cols = row.cells.length, hasLY = cols === 9;
+  if(row.classList.contains('inl-open')){
+    removeInlineAfter(row, n=>n.classList.contains('inl') && n.getAttribute('data-mid') === cat);
+    row.classList.remove('inl-open');
+    return;
+  }
+  collapseMidInline(cat);
+  const detail = (CURRENT_KPI.midDetailList||{})[cat];
+  const subs = detail ? detail.subs : [];
+  const q = escapeHtml(cat);
+  const html = subs.length
+    ? subs.map(x=>inlRowHtml('sub-row inl', `data-mid="${q}" data-sub="${escapeHtml(x.name)}" data-src="mid:${q}"`, x, hasLY, 26, '')).join('')
+    : inlMsgRow('inl', `data-mid="${q}"`, '소분류 데이터가 없습니다.', cols);
+  row.insertAdjacentHTML('afterend', html);
+  row.classList.add('inl-open');
+}
+function toggleSubProducts(row){
+  if(!CURRENT_KPI) return;
+  const sub = row.getAttribute('data-sub'), src = row.getAttribute('data-src') || 'all';
+  const key = src + '|' + sub;
+  const table = row.closest('table'), firstRow = table && table.querySelector('tbody tr');
+  const cols = firstRow ? firstRow.cells.length : 5, hasLY = cols === 9;
+  if(row.classList.contains('inl-open')){
+    removeInlineAfter(row, n=>n.classList.contains('prod-inl') && n.getAttribute('data-pkey') === key);
+    row.classList.remove('inl-open');
+    return;
+  }
+  let list = null;
+  if(src.startsWith('mid:')){ const t = CURRENT_KPI.catTree; const m = t && t[src.slice(4)]; list = m ? m[sub] : null; }
+  else { const t = CURRENT_KPI.subTree; list = t ? t[sub] : null; }
+  const inMid = row.classList.contains('inl');
+  const pk = `data-pkey="${escapeHtml(key)}"` + (inMid ? ` data-mid="${escapeHtml(row.getAttribute('data-mid')||'')}"` : '');
+  const cls = 'prod-inl' + (inMid ? ' inl' : '');
+  let html;
+  if(!list){
+    html = inlMsgRow(cls, pk, '상품 상세 데이터가 없습니다. 파일을 다시 업로드해 대시보드를 새로 생성해주세요.', cols);
+  } else if(!list.length){
+    html = inlMsgRow(cls, pk, '해당 소분류의 상품 데이터가 없습니다.', cols);
+  } else {
+    const tot = list.reduce((s,x)=>s+x.net,0);
+    html = list.map(x=>inlRowHtml(cls, pk, Object.assign({}, x, { share: tot>0 ? x.net/tot : 0, lyShare: null }), hasLY, inMid?44:30, '· ')).join('');
+  }
+  row.insertAdjacentHTML('afterend', html);
+  row.classList.add('inl-open');
+}
+/* 주요상품 · 신메뉴: 상품명 클릭 → 포함 품목(예: 밀크 컵/밀크 콘, H룽고S/H룽고G) 펼침 */
+function toggleFpItems(row){
+  if(!CURRENT_KPI) return;
+  const kind = row.getAttribute('data-fp'), idx = parseInt(row.getAttribute('data-idx'), 10);
+  const arr = kind === 'new' ? CURRENT_KPI.newMenuStats : CURRENT_KPI.featuredProductStats;
+  const x = arr && arr[idx];
+  const key = kind + '|' + idx;
+  if(row.classList.contains('inl-open')){
+    removeInlineAfter(row, n=>n.classList.contains('fp-inl') && n.getAttribute('data-fkey') === key);
+    row.classList.remove('inl-open');
+    return;
+  }
+  const cols = row.cells.length;
+  const attrs = `data-fkey="${key}"`;
+  let html;
+  if(!x || !x.items || !x.items.length){
+    html = inlMsgRow('fp-inl', attrs, '구성 품목 데이터가 없습니다. 파일을 다시 업로드해 대시보드를 새로 생성해주세요.', cols);
+  } else {
+    const share = x.net > 0 ? null : 0;
+    html = x.items.map(it=>`<tr class="fp-inl" ${attrs}>
+      <td style="text-align:left;padding-left:30px">· ${escapeHtml(it.name)}</td>
+      <td>${fmtNum(it.qty)}</td>
+      <td>${fmtWon(it.net)}</td>
+      <td>${x.net>0 ? fmtPct(it.net/x.net) : '-'}<span class="inl-note"> (상품 내)</span></td>
+      <td>${x.avgDailyQty && x.qty>0 ? (x.avgDailyQty * it.qty / x.qty).toFixed(1)+'개' : '-'}</td>
+    </tr>`).join('');
+  }
+  row.insertAdjacentHTML('afterend', html);
+  row.classList.add('inl-open');
+}
 function showMidDetail(cat){
   const panel = document.getElementById('midDetailPanel');
   if(!panel || !CURRENT_KPI) return;
@@ -2773,7 +2933,7 @@ function showMidDetail(cat){
     <div class="block-head" style="margin-top:18px"><div class="rule"></div></div>
     <h3 style="font-family:'Noto Sans KR';font-weight:800;font-size:1.05rem;margin:0 0 12px">${escapeHtml(cat)} — 소분류 · 상품 상세</h3>
     <div class="two-col">
-      <div>${catTable(detail.subs, detail.subTotal, true)}</div>
+      <div>${catTable(detail.subs, detail.subTotal, true, false, cat)}</div>
       <div>${productTable(prodList, prodQtySum, detail.subTotal)}</div>
     </div>
   `;
@@ -2908,6 +3068,56 @@ function wasteWeekdayTrendSVG(trend){
     ${bars}
   </svg>`;
 }
+function wasteDailyTrendSVG(daily){
+  const n = daily.length;
+  const W = 900, H = 250, padL = 52, padR = 16, padT = 22, padB = 38;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const maxVal = Math.max(...daily.map(d=>d.amt), 1);
+  const nice = (()=>{ const p = Math.pow(10, Math.floor(Math.log10(maxVal))); const f = maxVal/p; return (f<=1?1:f<=2?2:f<=5?5:10)*p; })();
+  const slot = plotW / n, barW = Math.max(1.5, Math.min(26, slot * 0.7));
+  const step = Math.max(1, Math.ceil(n / 15));
+  const fmtK = v => v>=10000 ? (Math.round(v/1000)/10)+'만' : fmtNum(Math.round(v));
+  let grid = '', bars = '', labels = '';
+  [0,0.5,1].forEach(t=>{
+    const y = padT + plotH - plotH*t;
+    grid += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="${t===0?'0':'3 3'}"/>`;
+    grid += `<text x="${padL-6}" y="${(y+4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--text-mute)">${fmtK(nice*t)}</text>`;
+  });
+  const maxIdx = daily.reduce((mi,d,i)=> d.amt > daily[mi].amt ? i : mi, 0);
+  daily.forEach((d,i)=>{
+    const gx = padL + (i+0.5)*slot;
+    const h = (d.amt/nice) * plotH;
+    const isWeekend = d.dow===6 || d.dow===7;
+    bars += `<rect x="${(gx-barW/2).toFixed(1)}" y="${(padT+plotH-h).toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h,0).toFixed(1)}" rx="1.5" fill="${isWeekend?'#1E3A8A':'var(--accent)'}"><title>${d.dateStr} · ${fmtWon(d.amt)}</title></rect>`;
+    if(i % step === 0 || i === n-1){
+      const md = d.dateStr.slice(5).replace('-','/');
+      labels += `<text x="${gx.toFixed(1)}" y="${H-18}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--text-mute)">${md}</text>`;
+    }
+  });
+  if(daily[maxIdx].amt > 0){
+    const gx = padL + (maxIdx+0.5)*slot, y = padT + plotH - (daily[maxIdx].amt/nice)*plotH;
+    labels += `<text x="${gx.toFixed(1)}" y="${(y-5).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="800" fill="var(--text)">${fmtK(daily[maxIdx].amt)}</text>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;font-family:'Noto Sans KR'">${grid}${bars}${labels}</svg>`;
+}
+function wasteDailyBlock(kpi){
+  const dl = kpi.wasteDaily;
+  if(!dl || !dl.length) return '';
+  const total = dl.reduce((s,d)=>s+d.amt,0);
+  const avg = total / dl.length;
+  const mx = dl.reduce((m,d)=> d.amt > m.amt ? d : m, dl[0]);
+  const rate = dl.reduce((s,d)=>s+d.net,0) > 0 ? total / dl.reduce((s,d)=>s+d.net,0) : null;
+  const legend = `<div class="note" style="margin:8px 0 0;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+      <span><i style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px;margin-right:4px"></i>평일</span>
+      <span><i style="display:inline-block;width:10px;height:10px;background:#1E3A8A;border-radius:2px;margin-right:4px"></i>주말</span>
+      <span>일평균 <b>${fmtWon(avg)}</b></span>
+      <span>최대 <b>${fmtWon(mx.amt)}</b> (${mx.dateStr.slice(5).replace('-','/')})</span>
+      ${rate!=null?`<span>기간 폐기율 <b>${fmtPct(rate,2)}</b></span>`:''}
+      ${kpi.isAvgView?'<span>※ 일자별 실제 금액(월평균 환산 아님)</span>':''}
+    </div>`;
+  return `<div class="subgroup-label" style="margin-top:20px">일자별 폐기 금액 추이</div>
+    <div class="tablewrap" style="padding:16px 20px">${wasteDailyTrendSVG(dl)}${legend}</div>`;
+}
 function wasteBlock(kpi){
   if(!kpi.hasWaste) return `<div class="empty-hint">재고폐기등록raw 파일이 업로드되지 않았습니다.</div>`;
   if(!kpi.wasteTop20.length) return `<div class="empty-hint">${kpi.isPeriod?'분석 기간':'이번 달'} 폐기 데이터가 없습니다.</div>`;
@@ -2935,6 +3145,7 @@ function wasteBlock(kpi){
     ${reasonTable}
     <div class="subgroup-label" style="margin-top:20px">요일별 폐기 금액 추이</div>
     ${trendChart}
+    ${wasteDailyBlock(kpi)}
     <div class="subgroup-label" style="margin-top:20px">폐기 상위 TOP 20</div>
     ${top20Table}
   `;
@@ -3065,7 +3276,7 @@ function periodCategoryLists(curAgg, refAgg, hasRef, midMap){
       .map((p,i)=>({rank:i+1, ...p, share: catNet>0 ? p.net/catNet : 0, lyShare: (p.lyNet!=null && catNetLY>0) ? p.lyNet/catNetLY : null}));
     midDetailList[c] = { subs, subTotal: catNet, prods, prodQtyTotal: catQty };
   });
-  return { midList, midTotal, subList, subTotal, midDetailList };
+  return { midList, midTotal, subList, subTotal, midDetailList, ...buildCatTree(curAgg, hasRef ? refAgg : null) };
 }
 
 function periodDowStats(items){
@@ -3144,7 +3355,7 @@ function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_
 
 
   // ---- 주요상품 실적 · 신메뉴 실적 · 전체 사이즈 비중 (아이템코드 → 공식 제품군 마스터 기준) ----
-  function newBucket(){ return {qty:0, net:0, standardQty:0, standardNet:0, grandQty:0, grandNet:0, ventiQty:0, ventiNet:0, hasSizeInfo:false}; }
+  function newBucket(){ return {items:{}, qty:0, net:0, standardQty:0, standardNet:0, grandQty:0, grandNet:0, ventiQty:0, ventiNet:0, hasSizeInfo:false}; }
   // 버킷은 label(표시명) 기준으로 유일하게 키를 잡습니다. 각 정의는 group(제품군명 일치) 또는
   // codes(특정 아이템코드 목록, 공용 그룹을 정밀하게 쪼갤 때 사용) 중 하나로 매칭됩니다.
   const featuredBuckets = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ featuredBuckets[d.label] = newBucket(); });
@@ -3173,6 +3384,7 @@ function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_
     if(fKey && featuredBuckets[fKey]){
       const b = featuredBuckets[fKey];
       b.qty+=qty; b.net+=net;
+      { const pn = str(r[PCOL.name]); if(pn){ if(!b.items[pn]) b.items[pn]={qty:0,net:0}; b.items[pn].qty+=qty; b.items[pn].net+=net; } }
       if(size==='STANDARD'){ b.standardQty+=qty; b.standardNet+=net; b.hasSizeInfo=true; }
       else if(size==='GRAND'){ b.grandQty+=qty; b.grandNet+=net; b.hasSizeInfo=true; }
       else if(size==='VENTI'){ b.ventiQty+=qty; b.ventiNet+=net; b.hasSizeInfo=true; }
@@ -3180,6 +3392,7 @@ function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_
     const nKey = (codeNorm && newMenuCodeMap[codeNorm]) || (group && newMenuGroupMap[group]);
     if(nKey && newMenuBuckets[nKey]){
       newMenuBuckets[nKey].qty+=qty; newMenuBuckets[nKey].net+=net;
+      { const pn = str(r[PCOL.name]); const bi = newMenuBuckets[nKey].items; if(pn){ if(!bi[pn]) bi[pn]={qty:0,net:0}; bi[pn].qty+=qty; bi[pn].net+=net; } }
     }
   });
   const featuredProductStats = FEATURED_PRODUCTS_DEF.map(d=>{
@@ -3188,6 +3401,7 @@ function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_
     return {
       name: d.label, qty:a.qty, net:a.net, share: prodTotalNet>0? a.net/prodTotalNet:0,
       avgDailyQty: DAY_CUTOFF>0 ? a.qty/DAY_CUTOFF : 0,
+      items: bucketItems(a),
       hasSizeInfo: a.hasSizeInfo,
       standardQty:a.standardQty, standardNet:a.standardNet, standardShare: sizeTotal>0? a.standardNet/sizeTotal:0,
       grandQty:a.grandQty, grandNet:a.grandNet, grandShare: sizeTotal>0? a.grandNet/sizeTotal:0,
@@ -3199,6 +3413,7 @@ function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_
     return {
       name: d.label, qty:a.qty, net:a.net, share: prodTotalNet>0? a.net/prodTotalNet:0,
       avgDailyQty: DAY_CUTOFF>0 ? a.qty/DAY_CUTOFF : 0,
+      items: bucketItems(a),
     };
   });
   const overallSizeMix = { standard: overallStandardNet, grand: overallGrandNet, venti: overallVentiNet };
@@ -3289,9 +3504,13 @@ function periodWasteCalc(wasteRows, priceMap, daily, cumNet, startStr, endStr){
     amt: wasteWeekdayAgg[i].count>0 ? wasteWeekdayAgg[i].amt/wasteWeekdayAgg[i].count : 0,
     qty: wasteWeekdayAgg[i].count>0 ? wasteWeekdayAgg[i].qty/wasteWeekdayAgg[i].count : 0,
   }));
+  const wasteDaily = daily.filter(d=>d.dateStr).map(d=>{
+    const w = wasteDateAgg[d.dateStr];
+    return { dateStr:d.dateStr, dow:d.dow, amt: w?w.amt:0, qty: w?w.qty:0, net: d.net||0 };
+  });
 
 
-  return { wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, wasteReasonList, wasteWeekdayTrend };
+  return { wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, wasteReasonList, wasteWeekdayTrend, wasteDaily };
 }
 
 async function computePeriod(c){
@@ -3497,7 +3716,7 @@ async function computePeriod(c){
     memberTotalForCompare: sum(salesCmp, d=>num(curByDate.get(d)[COL.dae.member])),
     deliveryTotalForCompare: sum(salesCmp, d=>deliveryOf(curByDate.get(d))),
     hasPos: !!aoaPos, hasProd: !!aoaProd, hasProdLY,
-    midList: cats.midList, midTotal: cats.midTotal, subList: cats.subList, subTotal: cats.subTotal, midDetailList: cats.midDetailList,
+    midList: cats.midList, midTotal: cats.midTotal, subList: cats.subList, subTotal: cats.subTotal, midDetailList: cats.midDetailList, catTree: cats.catTree, subTree: cats.subTree,
     productAll, productTop20: productAll.slice(0,20), prodTotalNet, prodTotalQty,
     ...extras, ...wasteCalc, hasWaste: !!aoaWaste, forecast,
   };
@@ -3654,6 +3873,9 @@ function scalePeriodKpi(k, N){
       d[key] = { subs: items(m.subs), prods: items(m.prods), subTotal: sc(m.subTotal), prodQtyTotal: sc(m.prodQtyTotal) }; });
     c.midDetailList = d;
   }
+  if(c.catTree){ const t = {}; Object.keys(c.catTree).forEach(m=>{ t[m] = {}; Object.keys(c.catTree[m]).forEach(sb=>{ t[m][sb] = items(c.catTree[m][sb]); }); }); c.catTree = t; }
+  if(c.subTree){ const t = {}; Object.keys(c.subTree).forEach(sb=>{ t[sb] = items(c.subTree[sb]); }); c.subTree = t; }
+  (['featuredProductStats','newMenuStats']).forEach(f=>{ if(Array.isArray(c[f])) c[f] = c[f].map(o=> o.items ? Object.assign({}, o, { items: items(o.items) }) : o); });
   ['overallSizeMix','coffeeMix'].forEach(f=>{ if(c[f]){ const o = {}; Object.keys(c[f]).forEach(k2=>{ o[k2] = sc(c[f][k2]); }); c[f] = o; } });
   if(c.forecast){ c.forecast = Object.assign({}, c.forecast, { value: sc(c.forecast.value), add: sc(c.forecast.add), refTotal: sc(c.forecast.refTotal), target: sc(c.forecast.target) }); }
   c.isAvgView = true;
@@ -5280,9 +5502,13 @@ function setupDelegatedEvents(){
     const row = e.target.closest && e.target.closest('tr.mid-row');
     if(row){
       const cat = row.getAttribute('data-cat');
-      if(cat!=null) showMidDetail(cat);
+      if(cat!=null){ showMidDetail(cat); toggleMidInline(row); }
       return;
     }
+    const subRow = e.target.closest && e.target.closest('tr.sub-row');
+    if(subRow){ toggleSubProducts(subRow); return; }
+    const fpRow = e.target.closest && e.target.closest('tr.fp-row');
+    if(fpRow){ toggleFpItems(fpRow); return; }
     if(e.target && e.target.id === 'topSearchBtn'){
       const input = document.getElementById('topSearchInput');
       if(input) topSearch(input.value);
