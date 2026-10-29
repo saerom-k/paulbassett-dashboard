@@ -2949,7 +2949,7 @@ function fitScrollBoxes(){
     box.style.maxHeight = Math.ceil(rb.bottom - tb.top + 8) + 'px';
   });
 }
-let SORT_STATE = { prod:{k:'default', d:'desc'}, waste:{k:'default', d:'desc'}, mid:{k:'default', d:'desc'}, sub:{k:'default', d:'desc'} };
+let SORT_STATE = { prod:{k:'net', d:'desc'}, waste:{k:'default', d:'desc'}, mid:{k:'net', d:'desc'}, sub:{k:'net', d:'desc'} };
 function sortList(list, key, dir){
   if(key==='default') return list.map(x=>Object.assign({}, x));   // 기본정렬: 원래 순서·순위 그대로
   const val = x => key==='growth' ? ((x.lyNet>0) ? (x.net-x.lyNet)/x.lyNet : null) : x[key];
@@ -2986,21 +2986,21 @@ function catSortedTableHtml(kind, kpi){
 function catSortBlock(kind, kpi){
   const list = kind==='sub' ? kpi.subList : kpi.midList;
   const hasLY = (list||[]).some(x=>x.lyNet!=null);
-  const opts = [['default','기본정렬'],['net','매출액'],['qty','수량'],['share','비중']].concat(hasLY ? [['growth','성장률']] : []);
-  if(SORT_STATE[kind].k==='growth' && !hasLY) SORT_STATE[kind] = {k:'default', d:SORT_STATE[kind].d};
+  const opts = [['net','매출액'],['qty','수량'],['share','비중']].concat(hasLY ? [['growth','성장률']] : []);
+  if(SORT_STATE[kind].k==='growth' && !hasLY) SORT_STATE[kind] = {k:'net', d:SORT_STATE[kind].d};
   return sortBarHtml(kind, opts, '상품 정렬', kind==='mid' ? '※ 대분류·소분류 순서는 그대로, 대분류/소분류를 눌렀을 때 나오는 상품 목록의 정렬에만 적용됩니다' : '※ 소분류 순서는 그대로, 소분류를 눌렀을 때 나오는 상품 목록의 정렬에만 적용됩니다') + `<div id="catTbl-${kind}">${catSortedTableHtml(kind, kpi)}</div>`;
 }
 function prodRankTableHtml(kpi){
   const base = (kpi.productAll && kpi.productAll.length) ? kpi.productAll : (kpi.productTop20||[]);
   const hasLY = base.some(x=>x.lyNet!=null);
-  let st = SORT_STATE.prod; if(st.k==='growth' && !hasLY) st = SORT_STATE.prod = {k:'default', d:st.d};
+  let st = SORT_STATE.prod; if(st.k==='growth' && !hasLY) st = SORT_STATE.prod = {k:'net', d:st.d};
   const list = sortList(base, st.k, st.d);
   return wrapScroll(productTable(list, kpi.prodTotalQty, kpi.prodTotalNet), 20, list.length);
 }
 function prodRankingBlock(kpi){
   const base = (kpi.productAll && kpi.productAll.length) ? kpi.productAll : (kpi.productTop20||[]);
   const hasLY = base.some(x=>x.lyNet!=null);
-  const opts = [['default','기본정렬'],['net','매출액'],['qty','수량'],['share','비중']].concat(hasLY ? [['growth','성장률']] : []);
+  const opts = [['net','매출액'],['qty','수량'],['share','비중']].concat(hasLY ? [['growth','성장률']] : []);
   return sortBarHtml('prod', opts) + `<div id="prodRankTable">${prodRankTableHtml(kpi)}</div>`;
 }
 function wasteRankTableHtml(kpi){
@@ -5096,19 +5096,36 @@ async function exportPDF(evt){
   await new Promise(r=>setTimeout(r, 60)); // 레이아웃 재계산 대기
   try{
     const target = document.getElementById('dashScreen');
-    const canvas = await html2canvas(target, {
-      scale:2, backgroundColor:'#ffffff', useCORS:true,
-      windowWidth: target.scrollWidth, width: target.scrollWidth,
-      windowHeight: target.scrollHeight, height: target.scrollHeight
-    });
-    const imgData = canvas.toDataURL('image/png');
+    // 화면이 길어지면 한 장의 캔버스가 브라우저 한도(약 16,000px)를 넘어 이미지가 깨지므로(PNG 오류),
+    // 섹션 경계에서 여러 조각으로 나눠 캡처한 뒤 같은 폭의 세로로 긴 페이지로 이어 붙여 저장합니다.
+    window.scrollTo(0, 0);
+    const W = target.scrollWidth, H = target.scrollHeight;
+    const SCALE = 2;
+    const maxCss = Math.floor(12000 / SCALE);     // 조각 하나의 최대 높이(CSS px) → 캔버스 12,000px 이하
+    const tr = target.getBoundingClientRect();
+    const tops = Array.from(target.querySelectorAll('section.block')).map(bl=>Math.round(bl.getBoundingClientRect().top - tr.top)).filter(t=>t>0).sort((p,q)=>p-q);
+    const chunks = []; let start = 0;
+    while(start < H){
+      let end = Math.min(H, start + maxCss);
+      if(end < H){ const cand = tops.filter(t=>t > start + maxCss*0.4 && t <= end); if(cand.length) end = cand[cand.length-1]; }
+      chunks.push([start, end]); start = end;
+    }
     const { jsPDF } = window.jspdf;
-    // 표/그래프가 페이지 경계에서 잘리지 않도록, 여러 페이지로 나누지 않고
-    // 콘텐츠 전체 비율에 맞춘 '한 장짜리' 세로로 긴 페이지로 저장합니다.
-    const ptWidth = 800; // 출력 기준 폭(pt)
-    const ptHeight = canvas.height * ptWidth / canvas.width;
-    const pdf = new jsPDF({ orientation:'p', unit:'pt', format:[ptWidth, ptHeight] });
-    pdf.addImage(imgData, 'PNG', 0, 0, ptWidth, ptHeight);
+    const ptWidth = 800;   // 출력 기준 폭(pt)
+    let pdf = null;
+    for(let ci=0; ci<chunks.length; ci++){
+      const [y0, y1] = chunks[ci];
+      const canvas = await html2canvas(target, {
+        scale:SCALE, backgroundColor:'#ffffff', useCORS:true,
+        windowWidth: W, width: W, windowHeight: H, height: y1 - y0, x: 0, y: y0, scrollX: 0, scrollY: 0
+      });
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+      if(!imgData || imgData.length < 200) throw new Error('화면 이미지를 만들지 못했습니다(화면이 너무 큽니다). 브라우저 창을 줄이거나 분기·반기 단위로 나눠 저장해 주세요.');
+      const ptH = canvas.height * ptWidth / canvas.width;
+      if(!pdf) pdf = new jsPDF({ orientation:'p', unit:'pt', format:[ptWidth, ptH] });
+      else pdf.addPage([ptWidth, ptH], 'p');
+      pdf.addImage(imgData, 'JPEG', 0, 0, ptWidth, ptH);
+    }
     const fileName = name.toLowerCase().endsWith('.pdf') ? name : name + '.pdf';
     // jsPDF의 기본 save()는 일부 브라우저(특히 download 속성 미지원 환경)에서
     // 새/현재 탭에 PDF를 바로 여는 방식으로 대체 동작할 수 있어, 직접 Blob URL을
