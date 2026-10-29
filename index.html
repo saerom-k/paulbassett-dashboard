@@ -2099,7 +2099,7 @@ async function computeAll(){
         name:k, ...midDetailRaw[c].prods[k],
         lyQty: ly? ly.qty : null, lyNet: ly? ly.net : null,
       };
-    }).sort((a,b)=>b.net-a.net).slice(0,20)
+    }).sort((a,b)=>b.net-a.net).slice(0,100)
       .map((p,i)=>({rank:i+1, ...p, share: catNet>0? p.net/catNet:0, lyShare: (p.lyNet!=null && catNetLY>0)? p.lyNet/catNetLY : null }));
     midDetailList[c] = { subs, subTotal: catNet, prods, prodQtyTotal: catQty };
   });
@@ -2960,25 +2960,35 @@ function sortList(list, key, dir){
   });
   return arr.map((x,i)=>Object.assign({}, x, {rank:i+1}));
 }
-function sortBarHtml(kind, opts){
+function sortBarHtml(kind, opts, label, hint){
   const cur = SORT_STATE[kind];
-  return `<div class="sortbar"><span class="sortlabel">정렬</span>
+  return `<div class="sortbar"><span class="sortlabel">${label||'정렬'}</span>
     <select class="sort-k" data-sortfor="${kind}">${opts.map(o=>`<option value="${o[0]}"${cur.k===o[0]?' selected':''}>${o[1]}</option>`).join('')}</select>
-    <select class="sort-d" data-sortfor="${kind}"${cur.k==='default'?' disabled':''}><option value="desc"${cur.d==='desc'?' selected':''}>높은순 (내림차순)</option><option value="asc"${cur.d==='asc'?' selected':''}>낮은순 (오름차순)</option></select></div>`;
+    <select class="sort-d" data-sortfor="${kind}"${cur.k==='default'?' disabled':''}><option value="desc"${cur.d==='desc'?' selected':''}>높은순 (내림차순)</option><option value="asc"${cur.d==='asc'?' selected':''}>낮은순 (오름차순)</option></select>${hint?`<span class="scroll-hint" style="margin:0">${hint}</span>`:''}</div>`;
+}
+function refreshOpenProducts(kind){
+  // 열려 있는 상품 목록만 새 정렬로 다시 그립니다(대분류·소분류 행 순서는 그대로).
+  if(kind==='mid'){
+    const p = document.getElementById('midDetailPanel');
+    if(p && p.style.display!=='none' && p.dataset.cat){ const c = p.dataset.cat; p.dataset.cat=''; showMidDetail(c); }
+  }
+  document.querySelectorAll('tr.sub-row.inl-open').forEach(r=>{
+    const isMid = (r.getAttribute('data-src')||'all').startsWith('mid:');
+    if((kind==='mid') !== isMid) return;
+    toggleSubProducts(r); toggleSubProducts(r);
+  });
 }
 function catSortedTableHtml(kind, kpi){
   const isSub = kind==='sub';
   const list = isSub ? kpi.subList : kpi.midList, total = isSub ? kpi.subTotal : kpi.midTotal;
-  const st = SORT_STATE[kind];
-  const sorted = sortList(list, st.k, st.d);
-  return catTable(sorted, total, isSub, !isSub);
+  return catTable(list, total, isSub, !isSub);   // 대분류·소분류 표 자체의 순서는 항상 기본 순서 유지
 }
 function catSortBlock(kind, kpi){
   const list = kind==='sub' ? kpi.subList : kpi.midList;
   const hasLY = (list||[]).some(x=>x.lyNet!=null);
   const opts = [['default','기본정렬'],['net','매출액'],['qty','수량'],['share','비중']].concat(hasLY ? [['growth','성장률']] : []);
   if(SORT_STATE[kind].k==='growth' && !hasLY) SORT_STATE[kind] = {k:'default', d:SORT_STATE[kind].d};
-  return sortBarHtml(kind, opts) + `<div id="catTbl-${kind}">${catSortedTableHtml(kind, kpi)}</div>`;
+  return sortBarHtml(kind, opts, '상품 정렬', kind==='mid' ? '※ 대분류·소분류 순서는 그대로, 대분류/소분류를 눌렀을 때 나오는 상품 목록의 정렬에만 적용됩니다' : '※ 소분류 순서는 그대로, 소분류를 눌렀을 때 나오는 상품 목록의 정렬에만 적용됩니다') + `<div id="catTbl-${kind}">${catSortedTableHtml(kind, kpi)}</div>`;
 }
 function prodRankTableHtml(kpi){
   const base = (kpi.productAll && kpi.productAll.length) ? kpi.productAll : (kpi.productTop20||[]);
@@ -3078,6 +3088,8 @@ function toggleSubProducts(row){
     html = inlMsgRow(cls, pk, '해당 소분류의 상품 데이터가 없습니다.', cols);
   } else {
     const tot = list.reduce((s,x)=>s+x.net,0);
+    const stp = SORT_STATE[src.startsWith('mid:') ? 'mid' : 'sub'];
+    list = sortList(list, stp.k, stp.d);
     html = list.map(x=>inlRowHtml(cls, pk, Object.assign({}, x, { share: tot>0 ? x.net/tot : 0, lyShare: null }), hasLY, inMid?44:30, '· ')).join('');
   }
   row.insertAdjacentHTML('afterend', html);
@@ -3129,14 +3141,15 @@ function showMidDetail(cat){
   if(rowEl) rowEl.classList.add('active');
   panel.dataset.cat = cat;
   panel.style.display = 'block';
-  const prodList = detail.prods.map(p=>({rank:p.rank, name:p.name, qty:p.qty, net:p.net, share:p.share, lyQty:p.lyQty, lyNet:p.lyNet, lyShare:p.lyShare}));
+  const stm = SORT_STATE.mid;
+  const prodList = sortList(detail.prods, stm.k, stm.d).map(p=>({rank:p.rank, name:p.name, qty:p.qty, net:p.net, share:p.share, lyQty:p.lyQty, lyNet:p.lyNet, lyShare:p.lyShare}));
   const prodQtySum = detail.prods.reduce((s,p)=>s+p.qty,0);
   panel.innerHTML = `
     <div class="block-head" style="margin-top:18px"><div class="rule"></div></div>
     <h3 style="font-family:'Noto Sans KR';font-weight:800;font-size:1.05rem;margin:0 0 12px">${escapeHtml(cat)} — 소분류 · 상품 상세</h3>
     <div class="two-col">
       <div>${catTable(detail.subs, detail.subTotal, true, false, cat)}</div>
-      <div>${productTable(prodList, prodQtySum, detail.subTotal)}</div>
+      <div>${wrapScroll(productTable(prodList, prodQtySum, detail.subTotal), 20, prodList.length)}</div>
     </div>
   `;
 }
@@ -3493,7 +3506,7 @@ function periodCategoryLists(curAgg, refAgg, hasRef, midMap){
     const prods = Object.keys(raw[c].prods).map(k=>{
       const ly = dLY.prods[k];
       return { name:k, ...raw[c].prods[k], lyQty: ly?ly.qty:null, lyNet: ly?ly.net:null };
-    }).sort((a,b)=>b.net-a.net).slice(0,20)
+    }).sort((a,b)=>b.net-a.net).slice(0,100)
       .map((p,i)=>({rank:i+1, ...p, share: catNet>0 ? p.net/catNet : 0, lyShare: (p.lyNet!=null && catNetLY>0) ? p.lyNet/catNetLY : null}));
     midDetailList[c] = { subs, subTotal: catNet, prods, prodQtyTotal: catQty };
   });
@@ -5755,9 +5768,7 @@ function setupDelegatedEvents(){
       const host = document.getElementById(kind==='prod' ? 'prodRankTable' : 'wasteRankTable');
       if(host) host.innerHTML = kind==='prod' ? prodRankTableHtml(CURRENT_KPI) : wasteRankTableHtml(CURRENT_KPI);
     } else {
-      const host = document.getElementById('catTbl-'+kind);
-      if(host) host.innerHTML = catSortedTableHtml(kind, CURRENT_KPI);
-      if(kind==='mid'){ const p = document.getElementById('midDetailPanel'); if(p){ p.style.display='none'; p.dataset.cat=''; } }
+      refreshOpenProducts(kind);
     }
     fitScrollBoxes();
   });
