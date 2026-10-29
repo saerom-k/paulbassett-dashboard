@@ -2194,7 +2194,7 @@ async function computeAll(){
   }));
   const wasteDaily = daily.filter(d=>d.dateStr && d.day<=DAY_CUTOFF).map(d=>{
     const w = wasteDateAgg[d.dateStr];
-    return { dateStr:d.dateStr, dow:d.dow, amt: w?w.amt:0, qty: w?w.qty:0, net: d.net||0 };
+    return { dateStr:d.dateStr, dow:d.dow, hol: d.isHoliday?1:0, amt: w?w.amt:0, qty: w?w.qty:0, net: d.net||0 };
   });
 
   // ---- 7. day-of-week averages & forecast ----
@@ -3070,12 +3070,12 @@ function wasteWeekdayTrendSVG(trend){
 }
 function wasteDailyTrendSVG(daily){
   const n = daily.length;
-  const W = 900, H = 250, padL = 52, padR = 16, padT = 22, padB = 38;
+  const W = 900, H = 262, padL = 52, padR = 16, padT = 22, padB = 50;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const maxVal = Math.max(...daily.map(d=>d.amt), 1);
   const nice = (()=>{ const p = Math.pow(10, Math.floor(Math.log10(maxVal))); const f = maxVal/p; return (f<=1?1:f<=2?2:f<=5?5:10)*p; })();
   const slot = plotW / n, barW = Math.max(1.5, Math.min(26, slot * 0.7));
-  const step = Math.max(1, Math.ceil(n / 15));
+  const rot = slot < 26, fs = 8.5;
   const fmtK = v => v>=10000 ? (Math.round(v/1000)/10)+'만' : fmtNum(Math.round(v));
   let grid = '', bars = '', labels = '';
   [0,0.5,1].forEach(t=>{
@@ -3087,11 +3087,13 @@ function wasteDailyTrendSVG(daily){
   daily.forEach((d,i)=>{
     const gx = padL + (i+0.5)*slot;
     const h = (d.amt/nice) * plotH;
-    const isWeekend = d.dow===6 || d.dow===7;
+    const isWeekend = d.dow===6 || d.dow===7 || d.hol;
     bars += `<rect x="${(gx-barW/2).toFixed(1)}" y="${(padT+plotH-h).toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(h,0).toFixed(1)}" rx="1.5" fill="${isWeekend?'#1E3A8A':'var(--accent)'}"><title>${d.dateStr} · ${fmtWon(d.amt)}</title></rect>`;
-    if(i % step === 0 || i === n-1){
+    {
       const md = d.dateStr.slice(5).replace('-','/');
-      labels += `<text x="${gx.toFixed(1)}" y="${H-18}" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--text-mute)">${md}</text>`;
+      labels += rot
+        ? `<text transform="translate(${(gx+3).toFixed(1)},${padT+plotH+8}) rotate(-90)" text-anchor="end" font-size="${fs}" font-weight="700" fill="var(--text-mute)">${md}</text>`
+        : `<text x="${gx.toFixed(1)}" y="${padT+plotH+14}" text-anchor="middle" font-size="${fs}" font-weight="700" fill="var(--text-mute)">${md}</text>`;
     }
   });
   if(daily[maxIdx].amt > 0){
@@ -3105,12 +3107,18 @@ function wasteDailyBlock(kpi){
   if(!dl || !dl.length) return '';
   const total = dl.reduce((s,d)=>s+d.amt,0);
   const avg = total / dl.length;
+  const isOff = d => d.dow===6 || d.dow===7 || d.hol;
+  const wk = dl.filter(d=>!isOff(d)), we = dl.filter(isOff);
+  const mean = a => a.length ? a.reduce((s,d)=>s+d.amt,0)/a.length : null;
+  const avgWk = mean(wk), avgWe = mean(we);
   const mx = dl.reduce((m,d)=> d.amt > m.amt ? d : m, dl[0]);
   const rate = dl.reduce((s,d)=>s+d.net,0) > 0 ? total / dl.reduce((s,d)=>s+d.net,0) : null;
   const legend = `<div class="note" style="margin:8px 0 0;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
       <span><i style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px;margin-right:4px"></i>평일</span>
-      <span><i style="display:inline-block;width:10px;height:10px;background:#1E3A8A;border-radius:2px;margin-right:4px"></i>주말</span>
+      <span><i style="display:inline-block;width:10px;height:10px;background:#1E3A8A;border-radius:2px;margin-right:4px"></i>주말·공휴일</span>
       <span>일평균 <b>${fmtWon(avg)}</b></span>
+      <span>평일 평균 <b>${avgWk!=null?fmtWon(avgWk):'-'}</b> (${wk.length}일)</span>
+      <span>주말·공휴일 평균 <b>${avgWe!=null?fmtWon(avgWe):'-'}</b> (${we.length}일)</span>
       <span>최대 <b>${fmtWon(mx.amt)}</b> (${mx.dateStr.slice(5).replace('-','/')})</span>
       ${rate!=null?`<span>기간 폐기율 <b>${fmtPct(rate,2)}</b></span>`:''}
       ${kpi.isAvgView?'<span>※ 일자별 실제 금액(월평균 환산 아님)</span>':''}
@@ -3506,7 +3514,7 @@ function periodWasteCalc(wasteRows, priceMap, daily, cumNet, startStr, endStr){
   }));
   const wasteDaily = daily.filter(d=>d.dateStr).map(d=>{
     const w = wasteDateAgg[d.dateStr];
-    return { dateStr:d.dateStr, dow:d.dow, amt: w?w.amt:0, qty: w?w.qty:0, net: d.net||0 };
+    return { dateStr:d.dateStr, dow:d.dow, hol: d.isHoliday?1:0, amt: w?w.amt:0, qty: w?w.qty:0, net: d.net||0 };
   });
 
 
