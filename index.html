@@ -3023,7 +3023,7 @@ function wasteView(kpi){
   return v ? Object.assign({}, kpi, v) : kpi;
 }
 function wasteFilterHtml(){
-  const labels = {all:'전체 (밀도 포함)', milldo:'밀도 (밀도만)', ex:'밀도 제외'};
+  const labels = {all:'전체(밀도 포함)', milldo:'밀도', ex:'밀도 제외'};
   return `<div class="sortbar" style="margin-bottom:12px"><span class="sortlabel">구분</span>`+
     WASTE_FILTERS.map(k=>`<button type="button" class="btn small wf-btn${WASTE_FILTER===k?'':' ghost'}" data-wf="${k}">${labels[k]}</button>`).join(' ')+`</div>`;
 }
@@ -4616,6 +4616,9 @@ loadLikeCount();
       맨 위에 새 날짜 항목을 추가해주세요. 오래된 항목도 계속 남겨둡니다.
    ============================================================ */
 const CHANGELOG = [
+  { date: '2026-11-03', items: [
+    '폐기 현황: 구분 선택 추가 (전체(밀도 포함) / 밀도 / 밀도 제외)',
+  ]},
   { date: '2026-10-29', items: [
     '상단/하단 탭 추가(매출·상품·폐기 등 구분, PC/모바일), 맨 위로 이동 버튼 추가',
   ]},
@@ -5922,11 +5925,7 @@ function applyTab(key, scroll){
   if(onBtn && onBtn.scrollIntoView){ try{ bar.scrollTo({left: onBtn.offsetLeft - 20, behavior:'smooth'}); }catch(e){} }
   setTimeout(fitChanValues, 0); setTimeout(fitChanValues, 300);
   setTimeout(fitScrollBoxes, 0); setTimeout(fitScrollBoxes, 350);
-  if(scroll && bar && bar.offsetParent === null){ window.scrollTo({top:0, behavior:'auto'}); }
-  else if(scroll && bar){
-    const top = bar.getBoundingClientRect().top + window.scrollY - 0;
-    if(window.scrollY > top) window.scrollTo({top: top, behavior:'auto'});
-  }
+  if(scroll){ window.scrollTo({top:0, behavior:'auto'}); }
 }
 window.addEventListener('resize', ()=>{ try{ fitScrollBoxes(); }catch(e){} });
 function setupTabs(){
