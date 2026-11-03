@@ -720,6 +720,9 @@ const DEFAULT_PRICE_MAP = {
   "[O]BY 나타 애플_75g*60EA/BOX": 712
 };
 // 상품명 띄어쓰기가 raw 파일마다 다를 수 있어, 비교 전 모든 공백을 제거하고 매칭합니다.
+const WASTE_FILTERS = ['all','milldo','ex'];
+function isMilldoWasteName(n){ return String(n===null||n===undefined?'':n).replace(/\s+/g,'').includes('밀도'); }
+let WASTE_FILTER = 'all';
 function stripWs(s){ return String(s===null||s===undefined?'':s).replace(/\s+/g,''); }
 function normCode(v){
   if(v===null||v===undefined||v==='') return '';
@@ -2222,12 +2225,14 @@ async function computeAll(){
   const prodGrowthDown = prodGrowthCandidates.slice().sort((a,b)=>a.growth-b.growth);
 
   // ---- 6. waste TOP20 (+ 전체 순위) ----
-  const monthWasteRows = wasteRows.filter(r=>{
+  const monthWasteRowsAll = wasteRows.filter(r=>{
     const d = normalizeDateStr(r[COL.waste.date]);
     if(!d) return false;
     const [y,m] = d.split('-').map(Number);
     return y===YEAR && m===MONTH;
   }).map((r, idx)=>({ r, idx }));
+  const calcWaste = (pred)=>{
+  const monthWasteRows = monthWasteRowsAll.filter(({r})=>pred(str(r[COL.waste.name])));
   const wasteGroup = {};
   monthWasteRows.forEach(({r, idx})=>{
     const name = str(r[COL.waste.name]);
@@ -2291,6 +2296,10 @@ async function computeAll(){
     const w = wasteDateAgg[d.dateStr];
     return { dateStr:d.dateStr, dow:d.dow, hol: d.isHoliday?1:0, amt: w?w.amt:0, qty: w?w.qty:0, net: d.net||0 };
   });
+  return { wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, wasteReasonList, wasteWeekdayTrend, wasteDaily };
+  };
+  const _wasteVar = { all:calcWaste(()=>true), milldo:calcWaste(isMilldoWasteName), ex:calcWaste(n=>!isMilldoWasteName(n)) };
+  const { wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, wasteReasonList, wasteWeekdayTrend, wasteDaily } = _wasteVar.all;
 
   // ---- 7. day-of-week averages & forecast ----
   // 요일별 평균매출(7-1)은 "이미 지난 날짜"만으로 평균을 내야 한다. 아직 오지 않은 날짜를 0으로
@@ -2350,7 +2359,7 @@ async function computeAll(){
     subGrowthUp, subGrowthDown, prodGrowthUp, prodGrowthDown,
     featuredProductStats, newMenuStats, overallSizeMix,
     wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, hasWaste: !!aoaWaste,
-    wasteReasonList, wasteWeekdayTrend, wasteDaily,
+    wasteReasonList, wasteWeekdayTrend, wasteDaily, wasteVariants: _wasteVar,
     hasProd: !!aoaProd, hasProdLY, hasPos: !!aoaPos, hasTarget: !!targetWB,
     hasPrevYear: !!aoaPrev || (REF_MODE==='YOY' && !!lastYearDailyFromTarget),
     refPartial: REF_PARTIAL, refDayMin: REF_DAY_MIN, refDayMax: REF_DAY_MAX,
@@ -3009,7 +3018,17 @@ function prodRankingBlock(kpi){
   const opts = [['net','매출액'],['qty','수량'],['share','비중']].concat(hasLY ? [['growth','성장률']] : []);
   return sortBarHtml('prod', opts) + `<div id="prodRankTable">${prodRankTableHtml(kpi)}</div>`;
 }
+function wasteView(kpi){
+  const v = kpi && kpi.wasteVariants && kpi.wasteVariants[WASTE_FILTER];
+  return v ? Object.assign({}, kpi, v) : kpi;
+}
+function wasteFilterHtml(){
+  const labels = {all:'전체 (밀도 포함)', milldo:'밀도 (밀도만)', ex:'밀도 제외'};
+  return `<div class="sortbar" style="margin-bottom:12px"><span class="sortlabel">구분</span>`+
+    WASTE_FILTERS.map(k=>`<button type="button" class="btn small wf-btn${WASTE_FILTER===k?'':' ghost'}" data-wf="${k}">${labels[k]}</button>`).join(' ')+`</div>`;
+}
 function wasteRankTableHtml(kpi){
+  kpi = wasteView(kpi);
   const base = (kpi.wasteAll && kpi.wasteAll.length) ? kpi.wasteAll : (kpi.wasteTop20||[]);
   const st = SORT_STATE.waste;
   const list = sortList(base.map(x=>Object.assign({net:0}, x)), st.k, st.d);
@@ -3350,10 +3369,12 @@ function wasteDailyBlock(kpi){
   return `<div class="subgroup-label" style="margin-top:20px">일자별 폐기 금액 추이 <span style="font-weight:600;color:var(--text-mute)">(단위: 만)</span></div>
     <div class="tablewrap" style="padding:16px 20px">${wasteDailyTrendSVG(dl)}${legend}</div>`;
 }
-function wasteBlock(kpi){
+function wasteBlock(kpi0){ return `<div id="wasteHost">${wasteBlockInner(kpi0)}</div>`; }
+function wasteBlockInner(kpi0){
+  const kpi = wasteView(kpi0);
   if(!kpi.hasWaste) return `<div class="empty-hint">재고폐기등록raw 파일이 업로드되지 않았습니다.</div>`;
-  if(!kpi.wasteTop20.length) return `<div class="empty-hint">${kpi.isPeriod?'분석 기간':'이번 달'} 폐기 데이터가 없습니다.</div>`;
-  const summary = `<div class="cards" style="margin-bottom:14px">
+  if(!kpi.wasteTop20.length) return (kpi0.wasteVariants ? wasteFilterHtml() : '') + `<div class="empty-hint">${kpi.isPeriod?'분석 기간':'이번 달'} 폐기 데이터가 없습니다.</div>`;
+  const summary = wasteFilterHtml() + `<div class="cards" style="margin-bottom:14px">
     <div class="card"><div class="label">폐기 수량</div><div class="value nowrap">${fmtNum(kpi.wasteTotalQty)}</div>${(kpi.isPeriod && !kpi.isAvgView) ? `<div class="sub nowrap">월평균 ${fmtNum(kpi.wasteTotalQty/kpi.effMonths)}</div>` : ''}</div>
     <div class="card"><div class="label">폐기금액(VAT 별도)</div><div class="value nowrap">${fmtWon(kpi.wasteTotalAmt)}</div>${(kpi.isPeriod && !kpi.isAvgView) ? `<div class="sub nowrap">월평균 ${fmtWon(kpi.wasteTotalAmt/kpi.effMonths)}</div>` : ''}</div>
     <div class="card"><div class="label">폐기율</div><div class="value">${fmtPct(kpi.wasteRate, 2)}</div><div class="sub">폐기금액(VAT 별도) / ${kpi.isPeriod?'기간':'당월'} 누계 매출</div></div>
@@ -3682,10 +3703,12 @@ function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_
 // 폐기 TOP20·사유별·요일별 추이를 분석 기간 데이터로 계산합니다.
 function periodWasteCalc(wasteRows, priceMap, daily, cumNet, startStr, endStr){
   // ---- 6. waste TOP20 (+ 전체 순위) ----
-  const monthWasteRows = wasteRows.filter(r=>{
+  const monthWasteRowsAll = wasteRows.filter(r=>{
     const d = normalizeDateStr(r[COL.waste.date]);
     return !!d && d>=startStr && d<=endStr;
   }).map((r, idx)=>({ r, idx }));
+  const calcWaste = (pred)=>{
+  const monthWasteRows = monthWasteRowsAll.filter(({r})=>pred(str(r[COL.waste.name])));
   const wasteGroup = {};
   monthWasteRows.forEach(({r, idx})=>{
     const name = str(r[COL.waste.name]);
@@ -3748,9 +3771,10 @@ function periodWasteCalc(wasteRows, priceMap, daily, cumNet, startStr, endStr){
     const w = wasteDateAgg[d.dateStr];
     return { dateStr:d.dateStr, dow:d.dow, hol: d.isHoliday?1:0, amt: w?w.amt:0, qty: w?w.qty:0, net: d.net||0 };
   });
-
-
   return { wasteTop20, wasteAll, wasteTotalAmt, wasteTotalQty, wasteRate, wasteReasonList, wasteWeekdayTrend, wasteDaily };
+  };
+  const _wasteVar = { all:calcWaste(()=>true), milldo:calcWaste(isMilldoWasteName), ex:calcWaste(n=>!isMilldoWasteName(n)) };
+  return Object.assign({}, _wasteVar.all, { wasteVariants:_wasteVar });
 }
 
 async function computePeriod(c){
@@ -4107,6 +4131,14 @@ function scalePeriodKpi(k, N){
   const items = arr => Array.isArray(arr) ? arr.map(o=>{ const n = Object.assign({}, o); PERIOD_SCALE_FIELDS.forEach(f=>{ if(typeof n[f]==='number') n[f] = n[f]/N; }); return n; }) : arr;
   ['midList','subList','productAll','productTop20','featuredProductStats','newMenuStats','milldoProductList','wasteAll','wasteTop20','wasteReasonList',
    'subGrowthUp','subGrowthDown','prodGrowthUp','prodGrowthDown'].forEach(f=>{ if(f in c) c[f] = items(c[f]); });
+  if(c.wasteVariants){
+    const wv = {};
+    Object.keys(c.wasteVariants).forEach(key=>{ const v = Object.assign({}, c.wasteVariants[key]);
+      v.wasteTotalAmt = sc(v.wasteTotalAmt); v.wasteTotalQty = sc(v.wasteTotalQty);
+      ['wasteAll','wasteTop20','wasteReasonList'].forEach(f=>{ if(f in v) v[f] = items(v[f]); });
+      wv[key] = v; });
+    c.wasteVariants = wv;
+  }
   if(c.midDetailList){
     const d = {};
     Object.keys(c.midDetailList).forEach(key=>{ const m = c.midDetailList[key];
@@ -5079,7 +5111,31 @@ function exportHTML(){
   const name = promptFilename(`${CURRENT_KPI.storeName}_${CURRENT_KPI.isPeriod ? CURRENT_KPI.periodTitle.replace(/[ ()]/g,'') : CURRENT_KPI.MONTH+'월'}_대시보드`);
   if(!name) return;
   try{
-    let fullHtml = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    // 저장 파일을 자바스크립트가 꺼진 보기(메일/메신저/파일 미리보기 등)에서 열어도 탭 이동이 되도록,
+    // 복제본에서 모든 탭 내용을 펼치고 탭 버튼을 앵커 링크로 바꿔 저장합니다. (정상 브라우저에서는 열 때 다시 탭 화면으로 생성됩니다)
+    const clone = document.documentElement.cloneNode(true);
+    try{
+      const ds = clone.querySelector('#dashScreen');
+      if(ds){
+        ds.classList.remove('tabs-on');
+        const firstOf = {};
+        ds.querySelectorAll('section.block[data-sec]').forEach(b=>{
+          b.classList.remove('tab-on');
+          const sc = b.getAttribute('data-sec');
+          TAB_DEFS.forEach(t=>{ if(!firstOf[t.key] && t.secs.includes(sc)){ firstOf[t.key]=1; b.id = 'tab-' + t.key; } });
+        });
+        ds.querySelectorAll('.tabbar button, .bottomtabs button').forEach(btn=>{
+          const a = clone.ownerDocument.createElement('a');
+          a.href = '#tab-' + btn.dataset.tab; a.className = btn.className; a.innerHTML = btn.innerHTML;
+          btn.replaceWith(a);
+        });
+        ds.querySelectorAll('.mback').forEach(m=>m.remove());
+        const st = clone.ownerDocument.createElement('style');
+        st.textContent = 'html{scroll-behavior:smooth} section.block{scroll-margin-top:12px} .tabbar a,.bottomtabs a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 2px 7px;font-size:.68rem;font-weight:700;color:var(--text-mute);text-decoration:none;font-family:inherit} .bottomtabs a .ico{font-size:1.25rem;line-height:1} .bottomtabs a.on{color:var(--accent)} .tabbar a{flex:0 0 auto;flex-direction:row;padding:13px 10px 10px;font-size:.95rem} @media (max-width:900px){ .tabbar{display:flex !important; margin:0 -14px 12px; padding:0 8px; gap:0; justify-content:space-between} .tabbar a{padding:12px 8px 10px; font-size:.9rem} .tabbar a .ico{display:none} .tabbar a.on{color:var(--accent)} }';
+        clone.querySelector('head').appendChild(st);
+      }
+    }catch(e){ console.warn(e); }
+    let fullHtml = '<!DOCTYPE html>\n' + clone.outerHTML;
     const kpiJson = JSON.stringify(CURRENT_KPI.isPeriod ? PERIOD_RAW : CURRENT_KPI).replace(/<\/script/gi, '<\\/script');
     const dataScript = `<script>window.__PRELOADED_KPI__ = ${kpiJson};<\/script>\n`;
     fullHtml = fullHtml.replace('<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx', dataScript + '<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx');
@@ -5781,6 +5837,13 @@ function setupDelegatedEvents(){
   });
   // 검색창에 포커스가 있으면 입력칸이 넓어지며 [검색] 버튼이 밀려나 클릭이 빗나가므로, 버튼을 눌러도 포커스를 유지합니다.
   document.addEventListener('mousedown', (e)=>{ if(e.target && e.target.id === 'topSearchBtn') e.preventDefault(); });
+  document.addEventListener('click', (e)=>{
+    const wb = e.target && e.target.closest ? e.target.closest('.wf-btn') : null;
+    if(!wb || !CURRENT_KPI) return;
+    WASTE_FILTER = wb.getAttribute('data-wf') || 'all';
+    const host = document.getElementById('wasteHost');
+    if(host){ host.innerHTML = wasteBlockInner(CURRENT_KPI); fitScrollBoxes(); }
+  });
   document.addEventListener('change', (e)=>{
     const t = e.target;
     if(!t || !t.dataset || !t.dataset.sortfor || !CURRENT_KPI) return;
