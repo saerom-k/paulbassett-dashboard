@@ -820,7 +820,7 @@ function coreProductName(raw){
 //  - 클래식 치즈 케이크: 273445(마스터상 상품명은 "프로마쥬클래식")
 //  - 유자새우샌드위치: 273497(완제밀도)·273501(폴앤밀도, 상품명은 "상큼유자새우샌드위치") — 같은 상품의 채널별 코드
 // ※ 신메뉴는 매장별로 미판매일 수 있어 수량 0은 정상입니다.
-const NEW_MENU_PRODUCTS_DEF = [
+const NEW_MENU_DEF_2611 = [
   {label:'설향딸기 아이스크림', group:'설향딸기 아이스크림'},
   {label:'딸기 아이스크림 라떼', group:'딸기 아이스크림 라떼'},
   {label:'스트로베리 딥 초콜릿 라떼', group:'스트로베리 딥 초콜릿 라떼'},
@@ -839,6 +839,39 @@ const NEW_MENU_PRODUCTS_DEF = [
   {label:'흑임자 카페 라떼', group:'흑임자 카페 라떼'},
   {label:'흑임자 토핑 아이스크림', group:'흑임자 토핑 아이스크림'},
 ];
+// 2026-11-19 이전(분석 기간 종료일 기준) 신메뉴: 유자 시즌 (본사 2026-10-29 C메뉴 파일 기준)
+const NEW_MENU_DEF_PRE2611 = [
+  {label:'유자 그릭요거트 아이스크림', group:'유자 그릭요거트 아이스크림'},
+  {label:'유자 그릭요거트 아이스크림 토핑컵', group:'유자 그릭요거트 아이스크림 토핑컵'},
+  {label:'유자 그릭요거트 아이스크림 라떼', group:'유자 그릭요거트 아이스크림 라떼'},
+  {label:'애플시나몬티', group:'애플시나몬티'},
+  {label:'카페 소이 밀크 with 허니', group:'카페 소이 밀크 with 허니'},
+  {label:'유자 요거트 크림롤', codes:['273480']},
+  {label:'티라미수', codes:['273441']},
+  {label:'클래식 치즈 케이크', codes:['273445']},
+  {label:'유자새우샌드위치', codes:['273497','273501']},
+  {label:'너티 멜로우 콜드브루', group:'너티 멜로우 콜드브루'},
+  {label:'너티 멜로우 콜드브루 라떼', group:'너티 멜로우 콜드브루 라떼'},
+  {label:'너티 멜로우 에스프레소', group:'너티 멜로우 에스프레소'},
+  {label:'너티 멜로우 룽고', group:'너티 멜로우 룽고'},
+  {label:'너티 멜로우 플랫화이트', group:'너티 멜로우 플랫화이트'},
+  {label:'너티 멜로우 카페라떼', group:'너티 멜로우 카페라떼'},
+  {label:'아이스크림 밀크티 카페라떼', group:'아이스크림 밀크티 카페라떼'},
+  {label:'흑임자 카페 라떼', group:'흑임자 카페 라떼'},
+  {label:'흑임자 토핑 아이스크림', group:'흑임자 토핑 아이스크림'},
+];
+// 분석 기간이 2026-11-19(딸기 시즌 출시) 이전과 이후에 걸쳐 있으면 두 시즌 신메뉴를 함께 보여줍니다.
+//  - 기간 전체가 11/19 이후 : 딸기 시즌만 / 기간 전체가 11/18 이전 : 유자 시즌만 / 걸쳐 있음 : 딸기 시즌 + 유자 시즌(중복 제외)
+function newMenuDefsFor(startStr, endStr){
+  const st = String(startStr||''), en = String(endStr||'');
+  const hasNew = en >= '2026-11-19', hasPre = st < '2026-11-19';
+  if(hasNew && hasPre){
+    const seen = new Set(NEW_MENU_DEF_2611.map(d=>d.label));
+    return NEW_MENU_DEF_2611.concat(NEW_MENU_DEF_PRE2611.filter(d=>!seen.has(d.label)));
+  }
+  return hasNew ? NEW_MENU_DEF_2611 : NEW_MENU_DEF_PRE2611;
+}
+const NEW_MENU_PRODUCTS_DEF = NEW_MENU_DEF_2611; // 최신 목록(기본값)
 const NEW_MENU_PRODUCTS = NEW_MENU_PRODUCTS_DEF.map(x=>x.label);
 document.getElementById('midMapInput').value = JSON.stringify(DEFAULT_MID_MAP, null, 2);
 document.getElementById('priceMapInput').value = JSON.stringify(DEFAULT_PRICE_MAP, null, 2);
@@ -2187,11 +2220,12 @@ async function computeAll(){
   // 버킷은 label(표시명) 기준으로 유일하게 키를 잡습니다. 각 정의는 group(제품군명 일치) 또는
   // codes(특정 아이템코드 목록, 공용 그룹을 정밀하게 쪼갤 때 사용) 중 하나로 매칭됩니다.
   const featuredBuckets = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ featuredBuckets[d.label] = newBucket(); });
-  const newMenuBuckets = {}; NEW_MENU_PRODUCTS_DEF.forEach(d=>{ newMenuBuckets[d.label] = newBucket(); });
+  const NMD = newMenuDefsFor(`${YEAR}-${String(MONTH).padStart(2,'0')}-01`, `${YEAR}-${String(MONTH).padStart(2,'0')}-${String(DAY_CUTOFF).padStart(2,'0')}`);
+  const newMenuBuckets = {}; NMD.forEach(d=>{ newMenuBuckets[d.label] = newBucket(); });
   const featuredCodeMap = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ (d.codes||[]).forEach(c=>{ featuredCodeMap[normCode(c)] = d.label; }); });
-  const newMenuCodeMap = {}; NEW_MENU_PRODUCTS_DEF.forEach(d=>{ (d.codes||[]).forEach(c=>{ newMenuCodeMap[normCode(c)] = d.label; }); });
+  const newMenuCodeMap = {}; NMD.forEach(d=>{ (d.codes||[]).forEach(c=>{ newMenuCodeMap[normCode(c)] = d.label; }); });
   const featuredGroupMap = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ if(d.group) featuredGroupMap[d.group] = d.label; });
-  const newMenuGroupMap = {}; NEW_MENU_PRODUCTS_DEF.forEach(d=>{ if(d.group) newMenuGroupMap[d.group] = d.label; });
+  const newMenuGroupMap = {}; NMD.forEach(d=>{ if(d.group) newMenuGroupMap[d.group] = d.label; });
   let overallStandardNet=0, overallGrandNet=0, overallVentiNet=0;
   monthProdRows.forEach(r=>{
     const qty = num(r[PCOL.qty]), net = num(r[PCOL.net]);
@@ -2236,7 +2270,7 @@ async function computeAll(){
       ventiQty:a.ventiQty, ventiNet:a.ventiNet, ventiShare: sizeTotal>0? a.ventiNet/sizeTotal:0,
     };
   });
-  const newMenuStats = NEW_MENU_PRODUCTS_DEF.map(d=>{
+  const newMenuStats = NMD.map(d=>{
     const a = newMenuBuckets[d.label];
     return {
       name: d.label, qty:a.qty, net:a.net, share: prodTotalNet>0? a.net/prodTotalNet:0,
@@ -3604,7 +3638,7 @@ function periodDowStats(items){
 
 
 // 월 화면의 상품 부가 분석(커피 믹스·밀도·주요상품·신메뉴·사이즈 비중·성장/부진 TOP5)을 기간 데이터로 계산합니다.
-function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_CUTOFF, hasProdLY, prodTotalNet, subList, productAll){
+function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_CUTOFF, hasProdLY, prodTotalNet, subList, productAll, PERIOD_END_STR, PERIOD_START_STR){
   // ---- 룽고/아메리카노/디카페인 아메리카노 비중, 밀도 매출 비중 (소분류 하단 도넛 그래프용) ----
   let coffeeMix = { lungo:0, americano:0, decaf:0 };
   let milldoNet = 0, milldoQty = 0;
@@ -3671,11 +3705,12 @@ function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_
   // 버킷은 label(표시명) 기준으로 유일하게 키를 잡습니다. 각 정의는 group(제품군명 일치) 또는
   // codes(특정 아이템코드 목록, 공용 그룹을 정밀하게 쪼갤 때 사용) 중 하나로 매칭됩니다.
   const featuredBuckets = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ featuredBuckets[d.label] = newBucket(); });
-  const newMenuBuckets = {}; NEW_MENU_PRODUCTS_DEF.forEach(d=>{ newMenuBuckets[d.label] = newBucket(); });
+  const NMD = newMenuDefsFor(PERIOD_START_STR, PERIOD_END_STR);
+  const newMenuBuckets = {}; NMD.forEach(d=>{ newMenuBuckets[d.label] = newBucket(); });
   const featuredCodeMap = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ (d.codes||[]).forEach(c=>{ featuredCodeMap[normCode(c)] = d.label; }); });
-  const newMenuCodeMap = {}; NEW_MENU_PRODUCTS_DEF.forEach(d=>{ (d.codes||[]).forEach(c=>{ newMenuCodeMap[normCode(c)] = d.label; }); });
+  const newMenuCodeMap = {}; NMD.forEach(d=>{ (d.codes||[]).forEach(c=>{ newMenuCodeMap[normCode(c)] = d.label; }); });
   const featuredGroupMap = {}; FEATURED_PRODUCTS_DEF.forEach(d=>{ if(d.group) featuredGroupMap[d.group] = d.label; });
-  const newMenuGroupMap = {}; NEW_MENU_PRODUCTS_DEF.forEach(d=>{ if(d.group) newMenuGroupMap[d.group] = d.label; });
+  const newMenuGroupMap = {}; NMD.forEach(d=>{ if(d.group) newMenuGroupMap[d.group] = d.label; });
   let overallStandardNet=0, overallGrandNet=0, overallVentiNet=0;
   monthProdRows.forEach(r=>{
     const qty = num(r[PCOL.qty]), net = num(r[PCOL.net]);
@@ -3720,7 +3755,7 @@ function periodProductExtras(monthProdRows, monthProdRowsLY, PCOL, PCOL_LY, DAY_
       ventiQty:a.ventiQty, ventiNet:a.ventiNet, ventiShare: sizeTotal>0? a.ventiNet/sizeTotal:0,
     };
   });
-  const newMenuStats = NEW_MENU_PRODUCTS_DEF.map(d=>{
+  const newMenuStats = NMD.map(d=>{
     const a = newMenuBuckets[d.label];
     return {
       name: d.label, qty:a.qty, net:a.net, share: prodTotalNet>0? a.net/prodTotalNet:0,
@@ -3985,7 +4020,7 @@ async function computePeriod(c){
       lyShare: hasProdLY ? (prodTotalNetLY>0 ? (ly?ly.net:0)/prodTotalNetLY : 0) : null };
   }).sort((a,b)=>b.net-a.net).map((p,i)=>({rank:i+1, ...p}));
 
-  const extras = periodProductExtras(curProd, refProd, PCOL, PCOL_LY, salesDays, hasProdLY, prodTotalNet, cats.subList, productAll);
+  const extras = periodProductExtras(curProd, refProd, PCOL, PCOL_LY, salesDays, hasProdLY, prodTotalNet, cats.subList, productAll, endStr, startStr);
   const wasteCalc = periodWasteCalc(wasteRows || [], priceMap || {}, daily, cumNet, startStr, endStr);
 
   // ---- 예상 실적: 마지막 달이 아직 끝나지 않았을 때 마지막 달 말일까지의 요일별 평균 기반 추정 ----
@@ -4679,7 +4714,7 @@ const CHANGELOG = [
     '밀도 매출 : 샌드위치 / 구움과자 3종 포함 여부 선택 추가 (중복 선택 가능)',
   ]},
   { date: '2026-11-19', items: [
-    '신메뉴 리스트 업데이트 : 딸기 시즌 출시 반영 (유자 시즌 종료)',
+    '신메뉴 리스트 업데이트 : 딸기 시즌 출시 반영 (유자 시즌 종료) — 분석 기간에 따라 유자 시즌 / 딸기 시즌 신메뉴 표시 (11/19 전후에 걸치면 함께 표시)',
   ]},
   { date: '2026-11-03', items: [
     '폐기 현황: 구분 선택 추가 (전체(밀도 포함) / 밀도 / 밀도 제외)',
